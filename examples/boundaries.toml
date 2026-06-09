@@ -1,0 +1,20 @@
+# Sample boundaries configuration.
+#
+# An aggregate is a named set of Django models, written as "app_label.Model".
+# A query rooted at a model in one aggregate may not join models of another
+# aggregate. Each model belongs to at most one aggregate; models not listed
+# in any aggregate are not checked.
+
+[aggregates]
+order    = ["shop.Order", "shop.OrderLine"]
+payment  = ["billing.Payment", "billing.Invoice", "billing.Refund"]
+customer = ["crm.Customer", "crm.Address"]
+
+# A model-heavy aggregate "fulfillment" can be expanded into a separate section with `models`.
+[aggregates.fulfillment]
+models = [
+    "logistics.Shipment",
+    "logistics.ShipmentItem",
+    "logistics.Package",
+    "logistics.TrackingEvent",
+]

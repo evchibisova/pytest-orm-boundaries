@@ -1,0 +1,47 @@
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12"]
+build-backend = "uv_build"
+
+[project]
+name = "pytest-orm-boundaries"
+version = "0.1.0"
+description = "Pytest plugin that fails your tests when ORM queries cross DDD aggregate boundaries (Django supported today)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Evgeniia Chibisova" }]
+keywords = [
+    "django",
+    "pytest",
+    "plugin",
+    "orm",
+    "ddd",
+    "aggregate",
+    "boundaries",
+    "architecture",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Django",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://github.com/evchibisova/pytest-orm-boundaries"
+Repository = "https://github.com/evchibisova/pytest-orm-boundaries"
+Issues = "https://github.com/evchibisova/pytest-orm-boundaries/issues"
+
+[project.entry-points.pytest11]
+boundaries = "pytest_orm_boundaries.plugin"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
