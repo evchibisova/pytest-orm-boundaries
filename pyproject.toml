@@ -39,6 +39,7 @@ dependencies = ["pytest>=8"]
 Homepage = "https://github.com/evchibisova/pytest-orm-boundaries"
 Repository = "https://github.com/evchibisova/pytest-orm-boundaries"
 Issues = "https://github.com/evchibisova/pytest-orm-boundaries/issues"
+Changelog = "https://github.com/evchibisova/pytest-orm-boundaries/blob/main/CHANGELOG.md"
 
 [project.entry-points.pytest11]
 boundaries = "pytest_orm_boundaries.plugin"
