@@ -4,7 +4,7 @@ from textwrap import dedent
 
 import pytest
 
-from pytest_orm_boundaries.check_boundaries import (
+from pytest_orm_boundaries.read_config import (
     BoundariesConfigError,
     load_aggregates_from_config,
 )

@@ -9,12 +9,13 @@ aggregate should not reach into the internals of another. Django's `__` relation
 lookups make it easy to cross those boundaries silently:
 
 ```python
-# Payment and Order belong to different aggregates — this query couples them.
+# Purchase and Client belong to different aggregates — this query couples them.
 Purchase.objects.get(client__name="John")
 ```
 
 `pytest-orm-boundaries` watches the queries your test suite executes and
-reports the ones that step outside their aggregate, including `__`, subqueries and other.
+reports the ones that step outside their aggregate, whether through `__`
+lookups, subqueries, or other joins.
 
 ## Install
 
@@ -38,6 +39,34 @@ purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 
 Models are written as `app_label.Model`. Models not listed in any aggregate are
 not checked. Without a config file the plugin emits a warning and runs no checks.
+
+## Ignoring files
+
+Add exceptions so that known offenders keep passing while you fix them one file at a time:
+
+```toml
+[ignore]
+files = [
+    "app/billing.py",
+    "app/legacy/*",
+]
+```
+
+Each entry is a glob ([`fnmatch`](https://docs.python.org/3/library/fnmatch.html),
+resolved relative to the config directory and matched against either:
+
+- the file that issues the query, or
+- the test file.
+
+If an ignored file runs queries through the whole suite without ever crossing a
+boundary, the plugin says so at the end:
+
+```
+======================= orm-boundaries: stale ignores ========================
+These [ignore] entries no longer suppress any boundary violation - their files are clean now.
+Remove them from boundaries.toml:
+  - app/billing.py
+```
 
 ## Status
 

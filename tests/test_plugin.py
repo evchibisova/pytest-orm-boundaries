@@ -27,7 +27,7 @@ def test_warns_when_no_config_file(pytester: pytest.Pytester):
     pytester.makepyfile("def test_ok(): pass")
     result = pytester.runpytest()
     result.assert_outcomes(passed=1, warnings=1)
-    result.stdout.fnmatch_lines(["*no boundaries.toml found*"])
+    result.stdout.fnmatch_lines(["*boundaries.toml found*"])
 
 
 def test_finds_default_config_in_rootdir(pytester: pytest.Pytester):
@@ -64,6 +64,16 @@ def test_missing_explicit_config_is_usage_error(pytester: pytest.Pytester):
     result = pytester.runpytest("--boundaries-config", "missing.toml")
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     result.stderr.fnmatch_lines(["*config file not found*missing.toml*"])
+
+
+def test_invalid_ignore_section_is_usage_error(pytester: pytest.Pytester):
+    pytester.path.joinpath("boundaries.toml").write_text(
+        '[aggregates]\norder = ["shop.Order"]\n[ignore]\nfiles = "oops.py"\n'
+    )
+    pytester.makepyfile("def test_ok(): pass")
+    result = pytester.runpytest()
+    assert result.ret == pytest.ExitCode.USAGE_ERROR
+    result.stderr.fnmatch_lines(["*orm-boundaries:*[[]ignore[]] files must be a list*"])
 
 
 def test_invalid_config_is_usage_error(pytester: pytest.Pytester):

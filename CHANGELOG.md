@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Per-file ignores: an `[ignore] files` list of globs in `boundaries.toml`.
+- Stale-ignore hint: when an ignored file runs without any violation, the plugin
+  reports it at the end of the session.
+
 ## [0.1.0] - 2026-06-24
 
 Initial alpha release.
