@@ -11,3 +11,6 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Claude Code local config
+.claude/
