@@ -1,6 +1,6 @@
 # pytest-orm-boundaries
 
-**Even when you control your imports - boundaries still leak through the ORM.**
+> **Even if you control your imports - boundaries still can leak through the ORM**
 
 A `pytest-orm-boundaries` is a pytest plugin that fails your tests when ORM queries cross your DDD aggregate boundaries.
 
