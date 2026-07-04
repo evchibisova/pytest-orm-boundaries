@@ -6,7 +6,7 @@ book     = ["bookshop.Book"]
 purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 
 # Ignore section
-# Each entry is a glob matched against the file that issues the query, relative to this dir.
+# Each entry is a glob matched against the file that issues the query, relative to pytest's rootdir.
 [ignore]
 files = [
     "bookshop/purchases.py",  # crosses -> suppressed, tests pass

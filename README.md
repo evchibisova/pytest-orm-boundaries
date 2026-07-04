@@ -1,6 +1,8 @@
 # pytest-orm-boundaries
 
-A pytest plugin that fails your tests when ORM queries cross your DDD aggregate boundaries.
+**Even when you control your imports - boundaries still leak through the ORM.**
+
+A `pytest-orm-boundaries` is a pytest plugin that fails your tests when ORM queries cross your DDD aggregate boundaries.
 
 Currently works with Django ORM.
 
@@ -53,7 +55,7 @@ files = [
 ```
 
 Each entry is a glob ([`fnmatch`](https://docs.python.org/3/library/fnmatch.html),
-resolved relative to the config directory and matched against either:
+resolved relative to pytest's root directory and matched against either:
 
 - the file that issues the query, or
 - the test file.
