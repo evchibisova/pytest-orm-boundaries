@@ -1,10 +1,14 @@
 # Aggregates for the bookshop example.
-#
-# Purchase references bookshop.Client and PurchaseLine references bookshop.Book
-# A query that *joins through* those FKs into another aggregate
-# crosses the boundary. See make_purchase.py.
 
 [aggregates]
 client   = ["bookshop.Client"]
 book     = ["bookshop.Book"]
 purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
+
+# Ignore section
+# Each entry is a glob matched against the file that issues the query, relative to pytest's rootdir.
+[ignore]
+files = [
+    "bookshop/purchases.py",  # crosses -> suppressed, tests pass
+    "bookshop/catalog.py",    # clean -> reported as a stale ignore to remove
+]
