@@ -65,10 +65,14 @@ class BoundaryGuard:
             self._tracker.mark_seen(file_paths=file_paths)
 
         table_to_model = _map_tables_to_models()
+        # Count only tables the query really reads: a filter on a foreign-key id
+        # uses a column already on the current table, so the linked table it
+        # points to is never actually read.
         labels = [
             table_to_model[table.table_name]._meta.label
-            for table in query.alias_map.values()
+            for alias, table in query.alias_map.items()
             if table.table_name in table_to_model
+            and query.alias_refcount.get(alias, 0) > 0
         ]
 
         try:

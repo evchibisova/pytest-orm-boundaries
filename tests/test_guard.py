@@ -51,9 +51,14 @@ def _installed_guard():
 
 
 def test_crossing_query_raises():
-    # Order -> Customer joins two aggregates.
     with pytest.raises(BoundaryViolation, match="customer, order"):
         list(Order.objects.filter(customer__name="Ann"))
+
+
+def test_trimmed_fk_lookup_across_boundary_does_not_raise():
+    # Django trims the join (FK column holds the pk), so the SQL reads one table.
+    list(Order.objects.filter(customer__pk=1))
+    list(Order.objects.filter(customer__id__in=[1, 2]))
 
 
 def test_within_aggregate_query_passes():
