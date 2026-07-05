@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "pytest-orm-boundaries"
-version = "0.2.0"
+version = "0.2.1"
 description = "Pytest plugin that fails your tests when ORM queries cross DDD aggregate boundaries (Django supported today)."
 readme = "README.md"
 requires-python = ">=3.11"
