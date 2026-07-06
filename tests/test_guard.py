@@ -1,14 +1,14 @@
-"""Integration test: the guard actually fails a boundary-crossing Django query.
+"""Integration test: the guard records boundary-crossing Django queries.
 
 Django is configured in conftest; two models in different aggregates let us run
-a real query through the installed guard.
+real queries through the installed guard.
 """
 
 from pathlib import Path
 
 import pytest
 
-from pytest_orm_boundaries.guard import BoundaryGuard, BoundaryViolation
+from pytest_orm_boundaries.guard import BoundaryGuard
 from pytest_orm_boundaries.ignores import IgnoreTracker
 
 pytest.importorskip("django")
@@ -41,25 +41,48 @@ def _create_tables():
     yield
 
 
-@pytest.fixture(autouse=True)
-def _installed_guard():
-    tracker = IgnoreTracker(patterns=[], root=Path("/proj"))
-    guard = BoundaryGuard(aggregates_config=AGGREGATES, ignore_tracker=tracker)
+@pytest.fixture
+def guard():
+    tracker = IgnoreTracker(patterns=[])
+    guard = BoundaryGuard(
+        aggregates_config=AGGREGATES, ignore_tracker=tracker, root=Path("/proj")
+    )
     guard.install()
-    yield
-    guard.restore_original_runner()
+    yield guard
+    guard.uninstall()
 
 
-def test_crossing_query_raises():
-    with pytest.raises(BoundaryViolation, match="customer, order"):
-        list(Order.objects.filter(customer__name="Ann"))
+def test_crossing_query_is_recorded(guard):
+    # Real join (non-key field) -> a genuine crossing, collected not raised.
+    list(Order.objects.filter(customer__name="Ann"))
+    assert len(guard.violations) == 1
+    assert guard.violations[0].crossed == "customer, order"
 
 
-def test_trimmed_fk_lookup_across_boundary_does_not_raise():
+def test_trimmed_fk_lookup_is_not_recorded(guard):
     # Django trims the join (FK column holds the pk), so the SQL reads one table.
     list(Order.objects.filter(customer__pk=1))
     list(Order.objects.filter(customer__id__in=[1, 2]))
+    assert guard.violations == []
 
 
-def test_within_aggregate_query_passes():
-    list(Order.objects.all())  # single aggregate -> runs without a violation
+def test_within_aggregate_query_is_not_recorded(guard):
+    list(Order.objects.all())  # single aggregate
+    assert guard.violations == []
+
+
+def test_records_group_by_call_place_and_accumulate_tests(guard):
+    # _record_violation is the grouping unit: same (file, line, crossed) -> one entry.
+    guard.set_current_test("t1")
+    guard._record_violation(call_place=("app/a.py", 10), crossed="order, payment")
+    guard.set_current_test("t2")
+    guard._record_violation(call_place=("app/a.py", 10), crossed="order, payment")
+    guard._record_violation(call_place=("app/b.py", 5), crossed="order, payment")
+
+    violations = guard.violations
+    assert [(v.file, v.line_number) for v in violations] == [
+        ("app/a.py", 10),
+        ("app/b.py", 5),
+    ]
+    assert violations[0].tests == {"t1", "t2"}
+    assert violations[1].tests == {"t2"}

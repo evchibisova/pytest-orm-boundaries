@@ -2,7 +2,7 @@
 
 > 💡 **Even if you control your imports — boundaries still can leak through the ORM**
 
-A `pytest-orm-boundaries` is a pytest plugin that fails your tests when ORM queries cross your DDD aggregate boundaries.
+A `pytest-orm-boundaries` is a pytest plugin that reports ORM queries crossing your DDD aggregate boundaries.
 
 Currently works with Django ORM.
 
@@ -41,6 +41,26 @@ purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 
 Models are written as `app_label.Model`. Models not listed in any aggregate are
 not checked. Without a config file the plugin emits a warning and runs no checks.
+
+## The report
+
+At the end of the run, the plugin prints one grouped entry per offending place:
+
+```
+===================== orm-boundaries: boundary violations ======================
+1 place(s) in your code crossed aggregate boundaries, affecting 1 test(s):
+
+bookshop/purchases.py:29
+    code: return list(Purchase.objects.filter(client__name=name))
+    crosses: client, purchase
+    affected tests (1):
+      test_purchases.py::test_get_purchases_by_client_name
+
+orm-boundaries: FAILED - 1 boundary violation(s), run exits non-zero.
+```
+
+The run exits non-zero when there are violations, so CI catches them.
+Pass `-v` to list all affected tests.
 
 ## Ignoring files
 

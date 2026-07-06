@@ -1,104 +1,167 @@
 """Django boundary guard: the aggregate-crossing rule and the query
-interception that enforces it.
-
-Patches SQLCompiler.execute_sql to check each query; violations from ignored
-call sites are swallowed, and stale ignores are reported.
+interception that records crossings.
 """
 
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Iterable
+import linecache
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from pytest_orm_boundaries.ignores import IgnoreTracker, find_source_files_in_stack
+from pytest_orm_boundaries.call_stack import find_in_project_frames
+from pytest_orm_boundaries.ignores import IgnoreTracker
 from pytest_orm_boundaries.read_config import (
     load_aggregates_from_config,
     load_ignored_files_from_config,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+    from typing import Any
+
     from django.db.models import Model
     from django.db.models.sql.query import Query
 
 
-class BoundaryViolation(Exception):
-    """Raised when a query joins models from more than one aggregate."""
+@dataclass
+class ViolationRecord:
+    """One offending call place and the tests that reached it.
+
+    Grouped by call place so a crossing shared by many tests is one entry,
+    not one line per test.
+    """
+
+    file: str
+    line_number: int
+    line_code: str
+    crossed: str
+    tests: set[str] = field(default_factory=set)
 
 
 class BoundaryGuard:
-    """Intercepts Django's executed queries and enforces the aggregate rule."""
+    """Intercepts Django's executed queries and records aggregate crossings."""
 
     def __init__(
-        self, *, aggregates_config: dict[str, str], ignore_tracker: IgnoreTracker
+        self,
+        *,
+        aggregates_config: dict[str, str],
+        ignore_tracker: IgnoreTracker,
+        root: Path,
     ) -> None:
         self._aggregates_config = aggregates_config
-        self._tracker = ignore_tracker
-        self._original_runner: Callable[..., Any] | None = None
+        self._ignore_tracker = ignore_tracker
+        self._root = Path(root)
+        self._original_execute_sql: Callable[..., Any] | None = None
+        self._current_test: str | None = None
+        self._violations: dict[tuple[str, int, str], ViolationRecord] = {}
 
     def install(self) -> None:
         from django.db.models.sql.compiler import SQLCompiler
 
-        original_runner = SQLCompiler.execute_sql
-        self._original_runner = original_runner
+        original_execute_sql = SQLCompiler.execute_sql
+        self._original_execute_sql = original_execute_sql
 
         def patched_execute_sql(compiler, *args, **kwargs):
-            self._check_query(query=compiler.query)
-            return original_runner(compiler, *args, **kwargs)
+            self._handle_query(query=compiler.query)
+            return original_execute_sql(compiler, *args, **kwargs)
 
         SQLCompiler.execute_sql = patched_execute_sql
 
-    def restore_original_runner(self) -> None:
+    def uninstall(self) -> None:
         from django.db.models.sql.compiler import SQLCompiler
 
-        SQLCompiler.execute_sql = self._original_runner
+        SQLCompiler.execute_sql = self._original_execute_sql
+
+    def set_current_test(self, nodeid: str | None) -> None:
+        """Remember which test is running so a recorded crossing can name it."""
+        self._current_test = nodeid
+
+    @property
+    def violations(self) -> list[ViolationRecord]:
+        return sorted(self._violations.values(), key=lambda v: (v.file, v.line_number))
 
     def find_stale_patterns(self) -> list[str]:
-        return self._tracker.find_stale_patterns()
+        return self._ignore_tracker.find_stale_patterns()
 
-    def _check_query(self, *, query: Query) -> None:
-        """Raise BoundaryViolation unless the query is clean or ignored."""
+    def _handle_query(self, *, query: Query) -> None:
+        """Handle one executed query: gather stack context, apply the aggregate
+        rule, and record a crossing (unless it's clean or its place is ignored).
+        """
+        # ``frames`` is the in-project part of this query's call stack,
+        # used by the ignore/stale check and the report.
+        frames: list[tuple[str, int]] | None = None
         file_paths: list[str] | None = None
-        if self._tracker.is_active:
-            file_paths = find_source_files_in_stack(root=self._tracker.root)
-            self._tracker.mark_seen(file_paths=file_paths)
+        if self._ignore_tracker.is_active:
+            frames = find_in_project_frames(root=self._root)
+            file_paths = self._extract_file_paths(frames)
+            self._ignore_tracker.mark_seen(file_paths=file_paths)
 
+        labels = self._read_labels(query=query)
+        crossed = self._find_crossing(labels=labels)
+        if crossed is None:
+            return
+
+        if file_paths is not None and self._ignore_tracker.has_ignore_for(
+            file_paths=file_paths
+        ):
+            self._ignore_tracker.mark_used(file_paths=file_paths)
+            return
+
+        if frames is None:
+            frames = find_in_project_frames(root=self._root)
+        self._record_violation(call_place=frames[0] if frames else None, crossed=crossed)
+
+    def _read_labels(self, *, query: Query) -> list[str]:
+        """Model labels of the tables the query actually reads.
+
+        A filter on a foreign-key id reads a column already on the current
+        table, so the table it points to isn't read -- and isn't counted.
+        """
         table_to_model = _map_tables_to_models()
-        # Count only tables the query really reads: a filter on a foreign-key id
-        # uses a column already on the current table, so the linked table it
-        # points to is never actually read.
-        labels = [
+        return [
             table_to_model[table.table_name]._meta.label
             for alias, table in query.alias_map.items()
             if table.table_name in table_to_model
             and query.alias_refcount.get(alias, 0) > 0
         ]
 
-        try:
-            self._check_boundaries(labels=labels)
-        except BoundaryViolation:
-            if file_paths is None or not self._tracker.has_ignore_for(
-                file_paths=file_paths
-            ):
-                raise
-            self._tracker.mark_used(file_paths=file_paths)
-
-    def _check_boundaries(self, *, labels: Iterable[str]) -> None:
-        aggregate_by_label = {
-            label: aggregate
+    def _find_crossing(self, *, labels: Iterable[str]) -> str | None:
+        """Return the crossed aggregate names ("order, payment") if the query
+        crosses a boundary, else None."""
+        aggregates = {
+            aggregate
             for label in labels
             if (aggregate := self._aggregates_config.get(label.lower())) is not None
         }
-        aggregates = set(aggregate_by_label.values())
         if len(aggregates) <= 1:
-            return
+            return None
+        return ", ".join(sorted(aggregates))
 
-        crossed = ", ".join(sorted(aggregates))
-        joined = ", ".join(sorted(aggregate_by_label.keys()))
-        raise BoundaryViolation(
-            f"aggregate boundaries crossed ({crossed}); joined models: {joined}"
-        )
+    def _record_violation(self, *, call_place: tuple[str, int] | None, crossed: str) -> None:
+        file, line = call_place if call_place is not None else ("<unknown>", 0)
+        key = (file, line, crossed)
+        record = self._violations.get(key)
+        if record is None:
+            line_code = self._read_line_code(file=file, line=line)
+            record = ViolationRecord(
+                file=file, line_number=line, line_code=line_code, crossed=crossed
+            )
+            self._violations[key] = record
+        if self._current_test is not None:
+            record.tests.add(self._current_test)
+
+    def _read_line_code(self, *, file: str, line: int) -> str:
+        """The offending line of code, stripped - or "" if it can't be read."""
+        if line <= 0 or file == "<unknown>":
+            return ""
+        absolute_path = str(self._root / file)
+        return linecache.getline(absolute_path, line).strip()
+
+    @staticmethod
+    def _extract_file_paths(frames: Iterable[tuple[str, int]]) -> set[str]:
+        return {path for path, _ in frames}
 
 
 def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
@@ -107,9 +170,11 @@ def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
         return None
 
     ignore_patterns = load_ignored_files_from_config(path=config_path)
-    tracker = IgnoreTracker(patterns=ignore_patterns, root=rootpath)
+    tracker = IgnoreTracker(patterns=ignore_patterns)
 
-    return BoundaryGuard(aggregates_config=aggregates_by_model, ignore_tracker=tracker)
+    return BoundaryGuard(
+        aggregates_config=aggregates_by_model, ignore_tracker=tracker, root=rootpath
+    )
 
 
 @functools.cache
