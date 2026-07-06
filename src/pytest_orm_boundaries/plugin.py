@@ -19,11 +19,16 @@ if TYPE_CHECKING:
     from pytest_orm_boundaries.guard import BoundaryGuard
 
 config_path_key = pytest.StashKey[Path | None]()
-guard_key = pytest.StashKey["BoundaryGuard | None"]()
+guard_key = pytest.StashKey["BoundaryGuard"]()
 
 
 class BoundariesConfigWarning(UserWarning):
     """Plugin is installed but no config file was found."""
+
+
+def _installed_guard(config: pytest.Config) -> BoundaryGuard | None:
+    """The guard for this run, or None if no config or aggregates were found."""
+    return config.stash.get(guard_key, None)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -47,11 +52,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Resolve the config and install the guard, stashing what other hooks need:
-
-    - ``config_path_key`` -- to show where the config came from in the report.
-    - ``guard_key`` -- to restore the patched query method on teardown and to
-      report stale ignores at the end of the run.
+    """Resolve config and install the guard, stashing both for later hooks:
+    the config path for the report header, the guard for teardown and reporting.
     """
     explicit_config = config.getoption("boundaries_config") or config.getini("boundaries_config")
     try:
@@ -73,9 +75,29 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
-    guard = config.stash.get(guard_key, None)
+    guard = _installed_guard(config)
     if guard is not None:
-        guard.restore_original_runner()
+        guard.uninstall()
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
+    """Tell the guard which test is running so a violation can name it."""
+    guard = _installed_guard(item.config)
+    if guard is not None:
+        guard.set_current_test(item.nodeid)
+    try:
+        return (yield)
+    finally:
+        if guard is not None:
+            guard.set_current_test(None)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """A clean-but-violating run must still fail the run (via the exit code)."""
+    guard = _installed_guard(session.config)
+    if guard is not None and guard.violations and exitstatus == pytest.ExitCode.OK:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 def pytest_terminal_summary(
@@ -83,14 +105,18 @@ def pytest_terminal_summary(
     exitstatus: int,
     config: pytest.Config,
 ) -> None:
-    guard = config.stash.get(guard_key, None)
-    if guard is not None:
-        stale = guard.find_stale_patterns()
-        build_report.report_stale_ignores(
-            terminalreporter=terminalreporter, stale=stale
-        )
+    guard = _installed_guard(config)
+    if guard is None:
+        return
+    build_report.report_violations(
+        terminalreporter=terminalreporter,
+        violations=guard.violations,
+        verbose=config.getoption("verbose", 0) > 0,
+    )
+    stale = guard.find_stale_patterns()
+    build_report.report_stale_ignores(terminalreporter=terminalreporter, stale=stale)
 
 
 def pytest_report_header(config: pytest.Config) -> str:
     config_path = config.stash.get(config_path_key, None)
-    return build_report.build_report_header(config_path=config_path)
+    return build_report.render_header(config_path=config_path)

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-06
+
+### Changed
+
+- A boundary crossing no longer fails the individual test. The plugin now
+  collects all crossings and prints one grouped report at the end of the run.
+
+### Fixed
+
+- Stack inspection no longer treats installed packages as project code: frames under `site-packages`/`dist-packages` are skipped, so the reported place points at application code.
+
 ## [0.2.1] - 2026-07-05
 
 ### Fixed
@@ -31,7 +42,8 @@ Initial alpha release.
 - Django ORM support: detects cross-aggregate access in the queries your test suite
   executes.
 
-[Unreleased]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/evchibisova/pytest-orm-boundaries/releases/tag/v0.1.0

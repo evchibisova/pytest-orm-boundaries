@@ -1,11 +1,10 @@
 """Per-file ignores: config parsing and the IgnoreTracker book-keeping."""
 
-from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
-from pytest_orm_boundaries.ignores import IgnoreTracker, find_source_files_in_stack
+from pytest_orm_boundaries.ignores import IgnoreTracker
 from pytest_orm_boundaries.read_config import (
     BoundariesConfigError,
     load_ignored_files_from_config,
@@ -13,7 +12,7 @@ from pytest_orm_boundaries.read_config import (
 
 
 def _tracker(patterns):
-    return IgnoreTracker(patterns=patterns, root=Path("/proj"))
+    return IgnoreTracker(patterns=patterns)
 
 
 def _write(tmp_path, text: str):
@@ -101,12 +100,6 @@ def test_glob_kept_alive_if_any_match_violates():
     tracker.mark_seen(file_paths=["app/legacy/clean.py"])
     tracker.mark_used(file_paths=["app/legacy/dirty.py"])
     assert tracker.find_stale_patterns() == []
-
-
-def test_stack_reports_caller_relative_to_root():
-    root = Path(__file__).resolve().parents[1]  # repo root
-    files = find_source_files_in_stack(root=root)
-    assert "tests/test_ignores.py" in files
 
 
 class _FakeReporter:
