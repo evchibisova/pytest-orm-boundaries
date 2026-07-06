@@ -46,3 +46,6 @@ boundaries = "pytest_orm_boundaries.plugin"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = ["django>=4.2"]
