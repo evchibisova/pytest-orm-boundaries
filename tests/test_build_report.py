@@ -23,22 +23,22 @@ def _render(violations, *, verbose=False):
     return reporter.lines
 
 
-def _violation(file="app/pay.py", line=42, line_code="Order.objects.get(pk=1)", tests=("t1",)):
+def _violation(file="app/pay.py", line=42, tests=("t1",)):
     return ViolationRecord(
         file=file,
         line_number=line,
-        line_code=line_code,
-        crossed="order, payment",
+        crossed_aggregates=("order", "payment"),
+        joined_models=("order.Invoice", "payrolls.IncomePayment"),
         tests=set(tests),
     )
 
 
-def test_report_shows_call_place_code_crossing_and_tests():
+def test_report_shows_call_place_aggregates_models_and_tests():
     text = "\n".join(_render([_violation(tests=("test_a", "test_b"))]))
     assert "boundary violations" in text
     assert "app/pay.py:42" in text
-    assert "Order.objects.get(pk=1)" in text  # the offending line of code
-    assert "order, payment" in text
+    assert "order ↔ payment" in text
+    assert "payrolls.IncomePayment" in text  # a joined model
     assert "test_a" in text and "test_b" in text
 
 
@@ -54,14 +54,8 @@ def test_report_counts_call_places_and_distinct_tests():
 
 def test_report_truncates_long_test_lists_unless_verbose():
     many = tuple(f"test_{i}" for i in range(50))
-    assert any("+30 more" in line for line in _render([_violation(tests=many)]))  # 50-20
+    assert any("+45 more" in line for line in _render([_violation(tests=many)]))  # 50-5
     assert not any("more" in line for line in _render([_violation(tests=many)], verbose=True))
-
-
-def test_report_omits_line_code_when_unreadable():
-    lines = _render([_violation(line_code="")])
-    assert any("app/pay.py:42" in line for line in lines)
-    assert not any(line == "    " for line in lines)  # no blank stand-in line
 
 
 def test_report_ends_with_loud_failed_verdict():

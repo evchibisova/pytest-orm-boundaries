@@ -5,7 +5,6 @@ interception that records crossings.
 from __future__ import annotations
 
 import functools
-import linecache
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,8 +34,8 @@ class ViolationRecord:
 
     file: str
     line_number: int
-    line_code: str
-    crossed: str
+    crossed_aggregates: tuple[str, ...]  # ("order", "payment")
+    joined_models: tuple[str, ...]  # ("order.Invoice", "payrolls.IncomePayment")
     tests: set[str] = field(default_factory=set)
 
 
@@ -55,7 +54,7 @@ class BoundaryGuard:
         self._root = Path(root)
         self._original_execute_sql: Callable[..., Any] | None = None
         self._current_test: str | None = None
-        self._violations: dict[tuple[str, int, str], ViolationRecord] = {}
+        self._violations: dict[tuple[str, int, tuple[str, ...]], ViolationRecord] = {}
 
     def install(self) -> None:
         from django.db.models.sql.compiler import SQLCompiler
@@ -80,7 +79,11 @@ class BoundaryGuard:
 
     @property
     def violations(self) -> list[ViolationRecord]:
-        return sorted(self._violations.values(), key=lambda v: (v.file, v.line_number))
+        """Recorded crossings, most-affecting first (then by call place)."""
+        return sorted(
+            self._violations.values(),
+            key=lambda v: (-len(v.tests), v.file, v.line_number),
+        )
 
     def find_stale_patterns(self) -> list[str]:
         return self._ignore_tracker.find_stale_patterns()
@@ -99,8 +102,8 @@ class BoundaryGuard:
             self._ignore_tracker.mark_seen(file_paths=file_paths)
 
         labels = self._read_labels(query=query)
-        crossed = self._find_crossing(labels=labels)
-        if crossed is None:
+        crossing = self._find_crossing(labels=labels)
+        if crossing is None:
             return
 
         if file_paths is not None and self._ignore_tracker.has_ignore_for(
@@ -111,7 +114,9 @@ class BoundaryGuard:
 
         if frames is None:
             frames = find_in_project_frames(root=self._root)
-        self._record_violation(call_place=frames[0] if frames else None, crossed=crossed)
+        self._record_violation(
+            call_place=frames[0] if frames else None, crossing=crossing
+        )
 
     def _read_labels(self, *, query: Query) -> list[str]:
         """Model labels of the tables the query actually reads.
@@ -127,37 +132,44 @@ class BoundaryGuard:
             and query.alias_refcount.get(alias, 0) > 0
         ]
 
-    def _find_crossing(self, *, labels: Iterable[str]) -> str | None:
-        """Return the crossed aggregate names ("order, payment") if the query
-        crosses a boundary, else None."""
-        aggregates = {
-            aggregate
+    def _find_crossing(
+        self, *, labels: Iterable[str]
+    ) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+        """Return ``(crossed aggregate names, joined model labels)`` if the query
+        crosses a boundary, else None.
+
+        e.g. ``(("order", "payment"), ("order.Invoice", "payrolls.IncomePayment"))``.
+        """
+        aggregate_by_label = {
+            label: aggregate
             for label in labels
             if (aggregate := self._aggregates_config.get(label.lower())) is not None
         }
+        aggregates = set(aggregate_by_label.values())
         if len(aggregates) <= 1:
             return None
-        return ", ".join(sorted(aggregates))
+        return tuple(sorted(aggregates)), tuple(sorted(aggregate_by_label.keys()))
 
-    def _record_violation(self, *, call_place: tuple[str, int] | None, crossed: str) -> None:
+    def _record_violation(
+        self,
+        *,
+        call_place: tuple[str, int] | None,
+        crossing: tuple[tuple[str, ...], tuple[str, ...]],
+    ) -> None:
+        crossed_aggregates, joined_models = crossing
         file, line = call_place if call_place is not None else ("<unknown>", 0)
-        key = (file, line, crossed)
+        key = (file, line, crossed_aggregates)
         record = self._violations.get(key)
         if record is None:
-            line_code = self._read_line_code(file=file, line=line)
             record = ViolationRecord(
-                file=file, line_number=line, line_code=line_code, crossed=crossed
+                file=file,
+                line_number=line,
+                crossed_aggregates=crossed_aggregates,
+                joined_models=joined_models,
             )
             self._violations[key] = record
         if self._current_test is not None:
             record.tests.add(self._current_test)
-
-    def _read_line_code(self, *, file: str, line: int) -> str:
-        """The offending line of code, stripped - or "" if it can't be read."""
-        if line <= 0 or file == "<unknown>":
-            return ""
-        absolute_path = str(self._root / file)
-        return linecache.getline(absolute_path, line).strip()
 
     @staticmethod
     def _extract_file_paths(frames: Iterable[tuple[str, int]]) -> set[str]:

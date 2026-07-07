@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from pytest_orm_boundaries.guard import ViolationRecord
 
-MAX_TESTS_SHOWN = 20
+MAX_TESTS_SHOWN = 5
 
 
 def report_violations(
@@ -22,8 +22,8 @@ def report_violations(
     violations: list[ViolationRecord],
     verbose: bool = False,
 ) -> None:
-    """Print one grouped entry per offending place: where the query crosses a
-    boundary, the offending line of code, and which tests reached it.
+    """Print one grouped entry per offending call place: which aggregates the
+    query crossed, the models it joined, and which tests reached it.
     """
     if not violations:
         return
@@ -58,23 +58,26 @@ def _write_violation(
 ) -> None:
     terminalreporter.write_line("")
     terminalreporter.write_line(f"{violation.file}:{violation.line_number}", bold=True)
-    if violation.line_code:
-        terminalreporter.write_line(f"    code: {violation.line_code}")
-    terminalreporter.write_line(f"    crosses: {violation.crossed}")
+    aggregates = " ↔ ".join(violation.crossed_aggregates)
+    terminalreporter.write_line(
+        f"    crossed aggregates: {aggregates}", yellow=True, bold=True
+    )
+    models = ", ".join(violation.joined_models)
+    terminalreporter.write_line(f"    models: {models}")
 
     tests = sorted(violation.tests)
     if not tests:
-        terminalreporter.write_line("    affected tests: (none captured)")
+        terminalreporter.write_line("    tests affected: (none captured)", light=True)
         return
 
     shown = tests if verbose else tests[:MAX_TESTS_SHOWN]
-    terminalreporter.write_line(f"    affected tests ({len(tests)}):")
+    terminalreporter.write_line(f"    {len(tests)} test(s) affected:", light=True)
     for nodeid in shown:
-        terminalreporter.write_line(f"      {nodeid}")
+        terminalreporter.write_line(f"      {nodeid}", light=True)
     hidden = len(tests) - len(shown)
     if hidden:
         terminalreporter.write_line(
-            f"      ... +{hidden} more (run with -v to list all)"
+            f"      ... +{hidden} more (-v to list all)", light=True
         )
 
 

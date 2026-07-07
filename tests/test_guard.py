@@ -56,7 +56,7 @@ def test_crossing_query_is_recorded(guard):
     # Real join (non-key field) -> a genuine crossing, collected not raised.
     list(Order.objects.filter(customer__name="Ann"))
     assert len(guard.violations) == 1
-    assert guard.violations[0].crossed == "customer, order"
+    assert guard.violations[0].crossed_aggregates == ("customer", "order")
 
 
 def test_trimmed_fk_lookup_is_not_recorded(guard):
@@ -72,13 +72,15 @@ def test_within_aggregate_query_is_not_recorded(guard):
 
 
 def test_records_group_by_call_place_and_accumulate_tests(guard):
-    # _record_violation is the grouping unit: same (file, line, crossed) -> one entry.
+    # _record_violation is the grouping unit: same (file, line, aggregates) -> one entry.
+    crossing = (("order", "payment"), ("order.Invoice", "payment.Allocation"))
     guard.set_current_test("t1")
-    guard._record_violation(call_place=("app/a.py", 10), crossed="order, payment")
+    guard._record_violation(call_place=("app/a.py", 10), crossing=crossing)
     guard.set_current_test("t2")
-    guard._record_violation(call_place=("app/a.py", 10), crossed="order, payment")
-    guard._record_violation(call_place=("app/b.py", 5), crossed="order, payment")
+    guard._record_violation(call_place=("app/a.py", 10), crossing=crossing)
+    guard._record_violation(call_place=("app/b.py", 5), crossing=crossing)
 
+    # Sorted most-affecting first: a.py (2 tests) before b.py (1 test).
     violations = guard.violations
     assert [(v.file, v.line_number) for v in violations] == [
         ("app/a.py", 10),
