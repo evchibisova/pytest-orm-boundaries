@@ -2,34 +2,45 @@
 
 Plan to improve. Not commitments - priorities can shift.
 
-## A readable violations report
+## Match ignores to the file that issues the query
 
-A run prints hundreds of near-identical failure lines, and it's hard to tell what
-actually broke. Add a report that groups everything by the line of code that
-crossed a boundary - showing that line and the tests it affected - so you can see
-and fix the real problem at a glance.
-
-## Trustworthy "stale ignore" hints
-
-The hint that suggests removing an ignore entry need fix: on a partial test run it can tell you to delete one you still need.
-
-## Catch crossings it currently misses
-
-The plugin inspects a query before Django finishes building the final SQL, so
-joins added at that last step slip through: for example, data pulled in from
-another aggregate via `select_related`. We'd need to check the query once it is
-fully built, so these genuine crossings aren't missed silently.
+An ignore matches if its file appears anywhere in the call chain, not just where
+the query runs - so it can silence a crossing that only passes through, and can
+make a stale ignore look live. Match ignores (and the stale check) to the file
+that issues the query.
 
 ## Warn on unknown models in the config
 
-Mistype a model name in `boundaries.toml` and that model is silently left
-unchecked - you think it's protected when it isn't. Warn loudly about names that
-don't match a real model.
+A mistyped model name in `boundaries.toml` is silently left unchecked - you think
+it's protected when it isn't. On startup, warn about names that match no real
+model.
+
+## Catch crossings it currently misses
+
+Genuine crossings that never trip the join rule:
+
+- **`select_related`** - added after the query is inspected, so it slips through;
+  we'd need to check the fully-built query.
+- **`prefetch_related`** - runs as a separate single-table query, so it never
+  looks like a join.
+- **Raw SQL** (`.raw()`, `cursor.execute(...)`) - bypasses the ORM path we hook.
+
+At minimum document these; detect where feasible.
+
+## Show how much was inspected
+
+The plugin only sees queries that tests run, so a summary like "inspected N
+queries across M tests" confirms the guard was active and how much was covered.
+
 
 ## Later
 
+### Cheaper checking when ignores are set
+
+With `[ignore]` entries, the plugin walks the call stack on every query, clean
+ones included - a hot path on large suites worth making cheaper.
+
 ### Configurable project root
 
-Ignore paths are resolved relative to where pytest thinks the project root is,
-which can shift between setups. Let the config pin the root so ignores keep
-working.
+Ignore paths depend on where pytest thinks the root is, which can shift. Let the
+config pin the root.
