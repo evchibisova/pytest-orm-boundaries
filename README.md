@@ -51,16 +51,17 @@ At the end of the run, the plugin prints one grouped entry per offending place:
 1 place(s) in your code crossed aggregate boundaries, affecting 1 test(s):
 
 bookshop/purchases.py:29
-    code: return list(Purchase.objects.filter(client__name=name))
-    crosses: client, purchase
-    affected tests (1):
+    crossed aggregates: client ↔ purchase
+    models: bookshop.Client, bookshop.Purchase
+    1 test(s) affected:
       test_purchases.py::test_get_purchases_by_client_name
 
 orm-boundaries: FAILED - 1 boundary violation(s), run exits non-zero.
 ```
 
-The run exits non-zero when there are violations, so CI catches them.
-Pass `-v` to list all affected tests.
+Each entry names the aggregates the query crossed and the models it joined.
+Places are ordered by how many tests they affect. Pass `-v` to see every affected test
+(otherwise the list is capped at 5 per place).
 
 ## Ignoring files
 
