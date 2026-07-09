@@ -19,13 +19,9 @@ model.
 
 Genuine crossings that never trip the join rule:
 
-- **`select_related`** - added after the query is inspected, so it slips through;
-  we'd need to check the fully-built query.
 - **`prefetch_related`** - runs as a separate single-table query, so it never
   looks like a join.
 - **Raw SQL** (`.raw()`, `cursor.execute(...)`) - bypasses the ORM path we hook.
-
-At minimum document these; detect where feasible.
 
 ## Show how much was inspected
 

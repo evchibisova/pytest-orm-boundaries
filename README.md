@@ -17,7 +17,7 @@ Purchase.objects.get(client__name="John")
 
 `pytest-orm-boundaries` watches the queries your test suite executes and
 reports the ones that step outside their aggregate, whether through `__`
-lookups, subqueries, or other joins.
+lookups, `select_related`, subqueries, or other joins.
 
 ## Install
 
@@ -50,11 +50,11 @@ At the end of the run, the plugin prints one grouped entry per offending place:
 ===================== orm-boundaries: boundary violations ======================
 1 place(s) in your code crossed aggregate boundaries, affecting 1 test(s):
 
-bookshop/purchases.py:29
+bookshop/reports.py:13
     crossed aggregates: client ↔ purchase
     models: bookshop.Client, bookshop.Purchase
     1 test(s) affected:
-      test_purchases.py::test_get_purchases_by_client_name
+      test_purchases.py::test_list_purchases_with_client
 
 orm-boundaries: FAILED - 1 boundary violation(s), run exits non-zero.
 ```
@@ -90,6 +90,13 @@ These [ignore] entries no longer suppress any boundary violation - their files a
 Remove them from boundaries.toml:
   - app/billing.py
 ```
+
+## Known gaps
+
+A few crossings the plugin doesn't catch yet:
+
+- `prefetch_related`
+- Raw SQL (`.raw()`, `cursor.execute(...)`)
 
 ## Status
 

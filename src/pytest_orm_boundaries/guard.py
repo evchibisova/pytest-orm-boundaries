@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from django.db.models import Model
+    from django.db.models.sql.compiler import SQLCompiler
     from django.db.models.sql.query import Query
 
 
@@ -63,8 +64,11 @@ class BoundaryGuard:
         self._original_execute_sql = original_execute_sql
 
         def patched_execute_sql(compiler, *args, **kwargs):
-            self._handle_query(query=compiler.query)
-            return original_execute_sql(compiler, *args, **kwargs)
+            # Inspect after the original call: select_related joins only land in
+            # the compiler's klass_info once the query has been compiled.
+            result = original_execute_sql(compiler, *args, **kwargs)
+            self._handle_query(compiler=compiler)
+            return result
 
         SQLCompiler.execute_sql = patched_execute_sql
 
@@ -88,7 +92,7 @@ class BoundaryGuard:
     def find_stale_patterns(self) -> list[str]:
         return self._ignore_tracker.find_stale_patterns()
 
-    def _handle_query(self, *, query: Query) -> None:
+    def _handle_query(self, *, compiler: SQLCompiler) -> None:
         """Handle one executed query: gather stack context, apply the aggregate
         rule, and record a crossing (unless it's clean or its place is ignored).
         """
@@ -101,7 +105,7 @@ class BoundaryGuard:
             file_paths = self._extract_file_paths(frames)
             self._ignore_tracker.mark_seen(file_paths=file_paths)
 
-        labels = self._read_labels(query=query)
+        labels = self._read_labels(compiler=compiler)
         crossing = self._find_crossing(labels=labels)
         if crossing is None:
             return
@@ -118,8 +122,20 @@ class BoundaryGuard:
             call_place=frames[0] if frames else None, crossing=crossing
         )
 
-    def _read_labels(self, *, query: Query) -> list[str]:
-        """Model labels of the tables the query actually reads.
+    def _read_labels(self, *, compiler: SQLCompiler) -> list[str]:
+        """Every model the query reads: the tables it joins plus the related
+        models ``select_related`` pulls in.
+
+        ``select_related`` builds its joins during compilation, into the
+        compiler's ``klass_info`` rather than the query's ``alias_map``, so the
+        two sources need separate reads.
+        """
+        joined_labels = self._read_joined_labels(query=compiler.query)
+        select_related_labels = _collect_klass_info_labels(compiler.klass_info)
+        return joined_labels + select_related_labels
+
+    def _read_joined_labels(self, *, query: Query) -> list[str]:
+        """Model labels of the tables the query joins.
 
         A filter on a foreign-key id reads a column already on the current
         table, so the table it points to isn't read -- and isn't counted.
@@ -187,6 +203,21 @@ def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
     return BoundaryGuard(
         aggregates_config=aggregates_by_model, ignore_tracker=tracker, root=rootpath
     )
+
+
+def _collect_klass_info_labels(klass_info: Any) -> list[str]:
+    """Model labels in a compiler's klass_info tree: the base model and every
+    model ``select_related`` joined in.
+
+    ``select_related`` joins never reach the query's ``alias_map``, so this tree
+    is the only place they surface.
+    """
+    if not klass_info:
+        return []
+    labels = [klass_info["model"]._meta.label]
+    for related_klass_info in klass_info.get("related_klass_infos", []):
+        labels.extend(_collect_klass_info_labels(related_klass_info))
+    return labels
 
 
 @functools.cache

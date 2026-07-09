@@ -2,8 +2,8 @@
 
 from django.db import models
 
-from .book import Book
-from .client import Client
+from bookshop.models.book import Book
+from bookshop.models.client import Client
 
 
 class Purchase(models.Model):

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Catch `select_related` crossings: the plugin now reads the related models 
+  the query pulled in and checks them too.
+
 ## [0.3.1] - 2026-07-07
 
 ### Changed

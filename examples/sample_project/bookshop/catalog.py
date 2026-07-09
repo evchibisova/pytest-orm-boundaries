@@ -3,7 +3,7 @@
 Used by the example to show a *stale* ignore.
 """
 
-from .models import Purchase
+from bookshop.models import Purchase
 
 
 def count_purchases():

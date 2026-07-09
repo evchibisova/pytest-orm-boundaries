@@ -4,7 +4,7 @@ Some of functions below cross the boundary between aggregates,
 described in boundaries.toml, so the tests must catch it.
 """
 
-from .models import Purchase, PurchaseLine
+from bookshop.models import Purchase, PurchaseLine
 
 
 # No violations: Purchase and PurchaseLine are in the same aggregate.
