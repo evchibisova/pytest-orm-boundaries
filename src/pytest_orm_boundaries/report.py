@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pytest_orm_boundaries.read_config import CONFIG_FILE_NAME
+from pytest_orm_boundaries.config import CONFIG_FILE_NAME
 
 if TYPE_CHECKING:
     from pathlib import Path

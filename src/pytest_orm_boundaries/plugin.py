@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pytest_orm_boundaries import build_report
-from pytest_orm_boundaries.guard import build_guard
-from pytest_orm_boundaries.read_config import (
+from pytest_orm_boundaries import report
+from pytest_orm_boundaries.config import (
     CONFIG_FILE_NAME,
     BoundariesConfigError,
     discover_config_path,
 )
+from pytest_orm_boundaries.guard import build_guard
 
 if TYPE_CHECKING:
     from pytest_orm_boundaries.guard import BoundaryGuard
@@ -108,15 +108,15 @@ def pytest_terminal_summary(
     guard = _installed_guard(config)
     if guard is None:
         return
-    build_report.report_violations(
+    report.report_violations(
         terminalreporter=terminalreporter,
         violations=guard.violations,
         verbose=config.getoption("verbose", 0) > 0,
     )
     stale = guard.find_stale_patterns()
-    build_report.report_stale_ignores(terminalreporter=terminalreporter, stale=stale)
+    report.report_stale_ignores(terminalreporter=terminalreporter, stale=stale)
 
 
 def pytest_report_header(config: pytest.Config) -> str:
     config_path = config.stash.get(config_path_key, None)
-    return build_report.render_header(config_path=config_path)
+    return report.render_header(config_path=config_path)

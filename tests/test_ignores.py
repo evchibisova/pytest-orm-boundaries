@@ -4,11 +4,11 @@ from textwrap import dedent
 
 import pytest
 
-from pytest_orm_boundaries.ignores import IgnoreTracker
-from pytest_orm_boundaries.read_config import (
+from pytest_orm_boundaries.config import (
     BoundariesConfigError,
     load_ignored_files_from_config,
 )
+from pytest_orm_boundaries.ignores import IgnoreTracker
 
 
 def _tracker(patterns):
@@ -114,11 +114,11 @@ class _FakeReporter:
 
 
 def _summary_lines(tracker):
-    from pytest_orm_boundaries import build_report
+    from pytest_orm_boundaries import report
 
     reporter = _FakeReporter()
     stale = tracker.find_stale_patterns()
-    build_report.report_stale_ignores(terminalreporter=reporter, stale=stale)
+    report.report_stale_ignores(terminalreporter=reporter, stale=stale)
     return reporter.lines
 
 

@@ -15,9 +15,9 @@ lookups make it easy to cross those boundaries silently:
 Purchase.objects.get(client__name="John")
 ```
 
-`pytest-orm-boundaries` watches the queries your test suite executes and
-reports the ones that step outside their aggregate, whether through `__`
-lookups, subqueries, or other joins.
+`pytest-orm-boundaries` watches the SQL your test suite executes and reports the
+queries that step outside their aggregate — whether through `__` lookups,
+`select_related`, subqueries, or hand-written `.raw()` SQL.
 
 ## Install
 
@@ -42,6 +42,50 @@ purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 Models are written as `app_label.Model`. Models not listed in any aggregate are
 not checked. Without a config file the plugin emits a warning and runs no checks.
 
+## What it catches
+
+The plugin works from the SQL your suite actually executes, so it flags any
+single statement that reads tables from two different aggregates - however the
+query was written. Each example below joins the `purchase` and `client` aggregates:
+
+- **`__` relation lookups:**
+
+  ```python
+  Purchase.objects.get(client__name="John")
+  ```
+
+- **`select_related`** (emits an `INNER JOIN`):
+
+  ```python
+  Purchase.objects.select_related("client")
+  ```
+
+- **Subqueries** - a table reached through a subquery still counts:
+
+  ```python
+  berlin_clients = Client.objects.filter(city="Berlin").values("id")
+  Purchase.objects.filter(client_id__in=berlin_clients)
+  ```
+
+- **Hand-written `.raw()` SQL:**
+
+  ```python
+  Purchase.objects.raw(
+      "SELECT p.id FROM bookshop_purchase p "
+      "JOIN bookshop_client c ON p.client_id = c.id"
+  )
+  ```
+
+- **Bare `cursor.execute()`** — the same join reached through a raw cursor.
+
+Queries that don't actually join across the boundary are **not** flagged — for
+example a foreign-key lookup by id, which Django resolves without a join:
+
+```python
+Purchase.objects.filter(client_id=42)     # reads one table
+Purchase.objects.filter(client__pk=42)    # Django trims the join
+```
+
 ## The report
 
 At the end of the run, the plugin prints one grouped entry per offending place:
@@ -50,11 +94,11 @@ At the end of the run, the plugin prints one grouped entry per offending place:
 ===================== orm-boundaries: boundary violations ======================
 1 place(s) in your code crossed aggregate boundaries, affecting 1 test(s):
 
-bookshop/purchases.py:29
+bookshop/reports.py:13
     crossed aggregates: client ↔ purchase
     models: bookshop.Client, bookshop.Purchase
     1 test(s) affected:
-      test_purchases.py::test_get_purchases_by_client_name
+      test_purchases.py::test_list_purchases_with_client
 
 orm-boundaries: FAILED - 1 boundary violation(s), run exits non-zero.
 ```
@@ -90,6 +134,10 @@ These [ignore] entries no longer suppress any boundary violation - their files a
 Remove them from boundaries.toml:
   - app/billing.py
 ```
+
+## Known gaps
+
+- `prefetch_related` loads each related set as its own single-table query, so it never looks like a join and isn't caught.
 
 ## Status
 

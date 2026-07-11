@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Catch more crossings: `select_related`, subqueries, and hand-written SQL
+  (`.raw()`, `cursor.execute(...)`).
+
+### Changed
+
+- Detection now parses the SQL each query executes, via Django's public
+  `connection.execute_wrapper` hook. Adds a dependency on
+  [`sqlglot`](https://github.com/tobymao/sqlglot).
+
 ## [0.3.1] - 2026-07-07
 
 ### Changed

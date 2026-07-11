@@ -1,6 +1,6 @@
 """Test examples: call the service functions and watch the plugin react."""
 
-from bookshop import catalog, purchases
+from bookshop import catalog, purchases, reports
 from bookshop.models import Book, Client
 
 
@@ -27,3 +27,18 @@ def test_count_purchases():
     # Clean: stays inside the `purchase` aggregate.
     # Test is needed for "stale import" demonstration
     catalog.count_purchases()
+
+
+def test_list_purchases_with_client():
+    # select_related pulls in Client -> crosses purchase <-> client (reported).
+    reports.list_purchases_with_client()
+
+
+def test_list_lines_with_purchase():
+    # select_related stays inside the purchase aggregate -> clean.
+    reports.list_lines_with_purchase()
+
+
+def test_count_purchases_for_client():
+    # Filter by FK id -> reads one column, no join -> clean.
+    reports.count_purchases_for_client(1)

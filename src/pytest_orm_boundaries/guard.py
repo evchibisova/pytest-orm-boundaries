@@ -1,27 +1,26 @@
-"""Django boundary guard: the aggregate-crossing rule and the query
-interception that records crossings.
+"""Django boundary guard: applies the aggregate-crossing rule to the queries a
+test suite executes and records the crossings.
 """
 
 from __future__ import annotations
 
-import functools
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pytest_orm_boundaries.call_stack import find_in_project_frames
-from pytest_orm_boundaries.ignores import IgnoreTracker
-from pytest_orm_boundaries.read_config import (
+from pytest_orm_boundaries.callstack import find_frames_inside_project
+from pytest_orm_boundaries.config import (
     load_aggregates_from_config,
     load_ignored_files_from_config,
 )
+from pytest_orm_boundaries.ignores import IgnoreTracker
+from pytest_orm_boundaries.model_resolution import resolve_labels
+from pytest_orm_boundaries.sql_parsing import extract_table_names, looks_like_data_query
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-    from typing import Any
+    from collections.abc import Iterable
 
-    from django.db.models import Model
-    from django.db.models.sql.query import Query
+    from django.db.backends.base.base import BaseDatabaseWrapper
 
 
 @dataclass
@@ -40,7 +39,7 @@ class ViolationRecord:
 
 
 class BoundaryGuard:
-    """Intercepts Django's executed queries and records aggregate crossings."""
+    """Records aggregate crossings in the queries a test suite executes."""
 
     def __init__(
         self,
@@ -51,27 +50,47 @@ class BoundaryGuard:
     ) -> None:
         self._aggregates_config = aggregates_config
         self._ignore_tracker = ignore_tracker
-        self._root = Path(root)
-        self._original_execute_sql: Callable[..., Any] | None = None
+        self._root_path = Path(root)
         self._current_test: str | None = None
         self._violations: dict[tuple[str, int, tuple[str, ...]], ViolationRecord] = {}
+        self._attached_connections: list[BaseDatabaseWrapper] = []
 
     def install(self) -> None:
-        from django.db.models.sql.compiler import SQLCompiler
+        """Attach to every DB connection: those open now and any opened later
+        (each new connection fires ``connection_created``).
+        """
+        from django.db import connections
+        from django.db.backends.signals import connection_created
 
-        original_execute_sql = SQLCompiler.execute_sql
-        self._original_execute_sql = original_execute_sql
-
-        def patched_execute_sql(compiler, *args, **kwargs):
-            self._handle_query(query=compiler.query)
-            return original_execute_sql(compiler, *args, **kwargs)
-
-        SQLCompiler.execute_sql = patched_execute_sql
+        connection_created.connect(self._handle_connection_created, weak=False)
+        for connection in connections.all(initialized_only=True):
+            self._attach_wrapper(connection)
 
     def uninstall(self) -> None:
-        from django.db.models.sql.compiler import SQLCompiler
+        from django.db.backends.signals import connection_created
 
-        SQLCompiler.execute_sql = self._original_execute_sql
+        connection_created.disconnect(self._handle_connection_created)
+        for connection in self._attached_connections:
+            try:
+                connection.execute_wrappers.remove(self._execute_wrapper)
+            except ValueError:
+                pass
+        self._attached_connections.clear()
+
+    def _handle_connection_created(
+        self, *, connection: BaseDatabaseWrapper, **_
+    ) -> None:
+        self._attach_wrapper(connection)
+
+    def _attach_wrapper(self, connection: BaseDatabaseWrapper) -> None:
+        if self._execute_wrapper not in connection.execute_wrappers:
+            connection.execute_wrappers.append(self._execute_wrapper)
+            self._attached_connections.append(connection)
+
+    def _execute_wrapper(self, execute, sql, params, many, context):
+        if looks_like_data_query(sql):
+            self._check_violations_in_query(sql, context["connection"].vendor)
+        return execute(sql, params, many, context)
 
     def set_current_test(self, nodeid: str | None) -> None:
         """Remember which test is running so a recorded crossing can name it."""
@@ -88,20 +107,23 @@ class BoundaryGuard:
     def find_stale_patterns(self) -> list[str]:
         return self._ignore_tracker.find_stale_patterns()
 
-    def _handle_query(self, *, query: Query) -> None:
-        """Handle one executed query: gather stack context, apply the aggregate
-        rule, and record a crossing (unless it's clean or its place is ignored).
+    def _check_violations_in_query(self, sql: str, vendor: str) -> None:
+        """Handle one executed data query: gather stack context, apply the
+        aggregate rule, and record a crossing (unless it's clean or ignored).
         """
         # ``frames`` is the in-project part of this query's call stack,
         # used by the ignore/stale check and the report.
         frames: list[tuple[str, int]] | None = None
-        file_paths: list[str] | None = None
+        file_paths: set[str] | None = None
         if self._ignore_tracker.is_active:
-            frames = find_in_project_frames(root=self._root)
-            file_paths = self._extract_file_paths(frames)
+            frames = find_frames_inside_project(root=self._root_path)
+            file_paths = {path for path, _ in frames}
             self._ignore_tracker.mark_seen(file_paths=file_paths)
 
-        labels = self._read_labels(query=query)
+        table_names = extract_table_names(sql, vendor)
+        if table_names is None:  # unparseable data query -- skip it (see ROADMAP)
+            return
+        labels = resolve_labels(table_names)
         crossing = self._find_crossing(labels=labels)
         if crossing is None:
             return
@@ -113,24 +135,10 @@ class BoundaryGuard:
             return
 
         if frames is None:
-            frames = find_in_project_frames(root=self._root)
+            frames = find_frames_inside_project(root=self._root_path)
         self._record_violation(
             call_place=frames[0] if frames else None, crossing=crossing
         )
-
-    def _read_labels(self, *, query: Query) -> list[str]:
-        """Model labels of the tables the query actually reads.
-
-        A filter on a foreign-key id reads a column already on the current
-        table, so the table it points to isn't read -- and isn't counted.
-        """
-        table_to_model = _map_tables_to_models()
-        return [
-            table_to_model[table.table_name]._meta.label
-            for alias, table in query.alias_map.items()
-            if table.table_name in table_to_model
-            and query.alias_refcount.get(alias, 0) > 0
-        ]
 
     def _find_crossing(
         self, *, labels: Iterable[str]
@@ -171,10 +179,6 @@ class BoundaryGuard:
         if self._current_test is not None:
             record.tests.add(self._current_test)
 
-    @staticmethod
-    def _extract_file_paths(frames: Iterable[tuple[str, int]]) -> set[str]:
-        return {path for path, _ in frames}
-
 
 def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
     aggregates_by_model = load_aggregates_from_config(path=config_path)
@@ -187,11 +191,3 @@ def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
     return BoundaryGuard(
         aggregates_config=aggregates_by_model, ignore_tracker=tracker, root=rootpath
     )
-
-
-@functools.cache
-def _map_tables_to_models() -> dict[str, type[Model]]:
-    """Map db_table -> model class for every installed model."""
-    from django.apps import apps
-
-    return {model._meta.db_table: model for model in apps.get_models()}
