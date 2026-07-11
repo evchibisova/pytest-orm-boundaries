@@ -48,26 +48,26 @@ The plugin works from the SQL your suite actually executes, so it flags any
 single statement that reads tables from two different aggregates - however the
 query was written. Each example below joins the `purchase` and `client` aggregates:
 
-- **`__` relation lookups:**
+- `__` relation lookups:
 
   ```python
   Purchase.objects.get(client__name="John")
   ```
 
-- **`select_related`** (emits an `INNER JOIN`):
+- `select_related`
 
   ```python
   Purchase.objects.select_related("client")
   ```
 
-- **Subqueries** - a table reached through a subquery still counts:
+- Subqueries - a table reached through a subquery still counts:
 
   ```python
   berlin_clients = Client.objects.filter(city="Berlin").values("id")
   Purchase.objects.filter(client_id__in=berlin_clients)
   ```
 
-- **Hand-written `.raw()` SQL:**
+- Hand-written `.raw()` SQL:
 
   ```python
   Purchase.objects.raw(
@@ -76,7 +76,7 @@ query was written. Each example below joins the `purchase` and `client` aggregat
   )
   ```
 
-- **Bare `cursor.execute()`** — the same join reached through a raw cursor.
+- Bare `cursor.execute()` - the same join reached through a raw cursor.
 
 Queries that don't actually join across the boundary are **not** flagged — for
 example a foreign-key lookup by id, which Django resolves without a join:
@@ -137,7 +137,7 @@ Remove them from boundaries.toml:
 
 ## Known gaps
 
-- `prefetch_related` loads each related set as its own single-table query, so it never looks like a join and isn't caught.
+- `prefetch_related` loads doesn't detected in current version.
 
 ## Status
 
