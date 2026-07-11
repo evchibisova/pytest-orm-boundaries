@@ -1,5 +1,9 @@
-"""Django boundary guard: applies the aggregate-crossing rule to the queries a
-test suite executes and records the crossings.
+"""ORM-agnostic boundary guard: applies the aggregate-crossing rule to the
+queries a test suite executes and records the crossings.
+
+The rule works from the executed SQL, so it is the same for every ORM. What
+differs per ORM is *how* the SQL is intercepted and *how* a table name maps to
+an aggregate label; subclasses (Django, SQLAlchemy) supply those two pieces.
 """
 
 from __future__ import annotations
@@ -12,15 +16,13 @@ from pytest_orm_boundaries.callstack import find_frames_inside_project
 from pytest_orm_boundaries.config import (
     load_aggregates_from_config,
     load_ignored_files_from_config,
+    load_orm_from_config,
 )
 from pytest_orm_boundaries.ignores import IgnoreTracker
-from pytest_orm_boundaries.model_resolution import resolve_labels
-from pytest_orm_boundaries.sql_parsing import extract_table_names, looks_like_data_query
+from pytest_orm_boundaries.sql_parsing import extract_table_names
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-    from django.db.backends.base.base import BaseDatabaseWrapper
 
 
 @dataclass
@@ -39,7 +41,12 @@ class ViolationRecord:
 
 
 class BoundaryGuard:
-    """Records aggregate crossings in the queries a test suite executes."""
+    """Records aggregate crossings in the queries a test suite executes.
+
+    ORM-agnostic core. Subclasses implement ``install``/``uninstall`` (hook into
+    the ORM's SQL path and feed statements to ``_check_violations_in_query``) and
+    ``resolve_labels`` (name the aggregate members a table belongs to).
+    """
 
     def __init__(
         self,
@@ -53,44 +60,23 @@ class BoundaryGuard:
         self._root_path = Path(root)
         self._current_test: str | None = None
         self._violations: dict[tuple[str, int, tuple[str, ...]], ViolationRecord] = {}
-        self._attached_connections: list[BaseDatabaseWrapper] = []
 
     def install(self) -> None:
-        """Attach to every DB connection: those open now and any opened later
-        (each new connection fires ``connection_created``).
-        """
-        from django.db import connections
-        from django.db.backends.signals import connection_created
-
-        connection_created.connect(self._handle_connection_created, weak=False)
-        for connection in connections.all(initialized_only=True):
-            self._attach_wrapper(connection)
+        """Start intercepting the queries the suite runs."""
+        raise NotImplementedError
 
     def uninstall(self) -> None:
-        from django.db.backends.signals import connection_created
+        """Stop intercepting queries and detach from the ORM."""
+        raise NotImplementedError
 
-        connection_created.disconnect(self._handle_connection_created)
-        for connection in self._attached_connections:
-            try:
-                connection.execute_wrappers.remove(self._execute_wrapper)
-            except ValueError:
-                pass
-        self._attached_connections.clear()
+    def resolve_labels(self, table_names: Iterable[str]) -> list[str]:
+        """Map the SQL table names a query reads to aggregate-member labels.
 
-    def _handle_connection_created(
-        self, *, connection: BaseDatabaseWrapper, **_
-    ) -> None:
-        self._attach_wrapper(connection)
-
-    def _attach_wrapper(self, connection: BaseDatabaseWrapper) -> None:
-        if self._execute_wrapper not in connection.execute_wrappers:
-            connection.execute_wrappers.append(self._execute_wrapper)
-            self._attached_connections.append(connection)
-
-    def _execute_wrapper(self, execute, sql, params, many, context):
-        if looks_like_data_query(sql):
-            self._check_violations_in_query(sql, context["connection"].vendor)
-        return execute(sql, params, many, context)
+        These labels are looked up in the aggregates config, so a subclass must
+        return them in whatever form the config declares members (Django model
+        labels, raw table names, ...).
+        """
+        raise NotImplementedError
 
     def set_current_test(self, nodeid: str | None) -> None:
         """Remember which test is running so a recorded crossing can name it."""
@@ -123,7 +109,7 @@ class BoundaryGuard:
         table_names = extract_table_names(sql, vendor)
         if table_names is None:  # unparseable data query -- skip it (see ROADMAP)
             return
-        labels = resolve_labels(table_names)
+        labels = self.resolve_labels(table_names)
         crossing = self._find_crossing(labels=labels)
         if crossing is None:
             return
@@ -181,6 +167,11 @@ class BoundaryGuard:
 
 
 def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
+    """Build the guard the config asks for, or None if no aggregates are declared.
+
+    The ``orm`` config key selects the subclass; its ORM module is imported only
+    then, so a Django project never imports SQLAlchemy and vice versa.
+    """
     aggregates_by_model = load_aggregates_from_config(path=config_path)
     if not aggregates_by_model:
         return None
@@ -188,6 +179,16 @@ def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
     ignore_patterns = load_ignored_files_from_config(path=config_path)
     tracker = IgnoreTracker(patterns=ignore_patterns)
 
-    return BoundaryGuard(
+    orm = load_orm_from_config(path=config_path)
+    if orm == "sqlalchemy":
+        from pytest_orm_boundaries.sqlalchemy_guard import SQLAlchemyBoundaryGuard
+
+        guard_class: type[BoundaryGuard] = SQLAlchemyBoundaryGuard
+    else:
+        from pytest_orm_boundaries.django_guard import DjangoBoundaryGuard
+
+        guard_class = DjangoBoundaryGuard
+
+    return guard_class(
         aggregates_config=aggregates_by_model, ignore_tracker=tracker, root=rootpath
     )

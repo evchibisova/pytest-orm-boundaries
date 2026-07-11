@@ -8,6 +8,9 @@ from typing import Any
 
 CONFIG_FILE_NAME = "boundaries.toml"
 
+SUPPORTED_ORMS = ("django", "sqlalchemy")
+DEFAULT_ORM = "django"
+
 
 class BoundariesConfigError(Exception):
     """Raised when the config file is malformed or semantically invalid."""
@@ -65,6 +68,23 @@ def load_aggregates_from_config(*, path: Path) -> dict[str, str]:
                     f"'{owner}' and '{aggregate}'"
                 )
     return aggregates_by_model
+
+
+def load_orm_from_config(*, path: Path) -> str:
+    """Read the ``orm`` key, defaulting to Django.
+
+    Selects which ORM the guard hooks into; the value must be one the plugin
+    knows how to intercept.
+    """
+    config = _read_config(path=path)
+
+    orm = config.get("orm", DEFAULT_ORM)
+    if orm not in SUPPORTED_ORMS:
+        supported = ", ".join(SUPPORTED_ORMS)
+        raise BoundariesConfigError(
+            f"{path}: unknown orm '{orm}', expected one of: {supported}"
+        )
+    return orm
 
 
 def load_ignored_files_from_config(*, path: Path) -> list[str]:

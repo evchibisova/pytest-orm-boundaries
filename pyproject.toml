@@ -51,4 +51,4 @@ exclude-newer = "2 weeks"
 testpaths = ["tests"]
 
 [dependency-groups]
-dev = ["django>=4.2"]
+dev = ["django>=4.2", "sqlalchemy>=2"]

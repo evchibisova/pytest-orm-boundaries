@@ -17,10 +17,16 @@ model.
 
 ## Catch crossings it currently misses
 
-Genuine crossings that never trip the join rule:
+The rule reads one statement at a time, so it only fires when a single statement
+joins across the boundary. A crossing the ORM splits into separate single-table
+queries never looks like a join, and slips through:
 
-- **`prefetch_related`** - runs as a separate single-table query, so it never
-  looks like a join.
+- **Django `prefetch_related`** - runs as a separate single-table query.
+- **SQLAlchemy `selectinload`** - same shape: a second single-table query
+  (`... WHERE id IN (...)`), no join to flag. (`joinedload` and `subqueryload`
+  do emit a join, and are caught.)
+- **Lazy relationship access** (both ORMs) - reaching `purchase.client` fires a
+  single-table lookup per row, so the N+1 traversal never crosses in one query.
 
 ## Surface queries the parser couldn't read
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from pytest_orm_boundaries.guard import BoundaryGuard
+from pytest_orm_boundaries.django_guard import DjangoBoundaryGuard
 from pytest_orm_boundaries.ignores import IgnoreTracker
 
 pytest.importorskip("django")
@@ -44,7 +44,7 @@ def _create_tables():
 @pytest.fixture
 def guard():
     tracker = IgnoreTracker(patterns=[])
-    guard = BoundaryGuard(
+    guard = DjangoBoundaryGuard(
         aggregates_config=AGGREGATES, ignore_tracker=tracker, root=Path("/proj")
     )
     guard.install()
