@@ -15,9 +15,9 @@ lookups make it easy to cross those boundaries silently:
 Purchase.objects.get(client__name="John")
 ```
 
-`pytest-orm-boundaries` watches the queries your test suite executes and
-reports the ones that step outside their aggregate, whether through `__`
-lookups, `select_related`, subqueries, or other joins.
+`pytest-orm-boundaries` watches the SQL your test suite executes and reports the
+queries that step outside their aggregate — whether through `__` lookups,
+`select_related`, subqueries, or hand-written `.raw()` SQL.
 
 ## Install
 
@@ -41,6 +41,50 @@ purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 
 Models are written as `app_label.Model`. Models not listed in any aggregate are
 not checked. Without a config file the plugin emits a warning and runs no checks.
+
+## What it catches
+
+The plugin works from the SQL your suite actually executes, so it flags any
+single statement that reads tables from two different aggregates - however the
+query was written. Each example below joins the `purchase` and `client` aggregates:
+
+- **`__` relation lookups:**
+
+  ```python
+  Purchase.objects.get(client__name="John")
+  ```
+
+- **`select_related`** (emits an `INNER JOIN`):
+
+  ```python
+  Purchase.objects.select_related("client")
+  ```
+
+- **Subqueries** - a table reached through a subquery still counts:
+
+  ```python
+  berlin_clients = Client.objects.filter(city="Berlin").values("id")
+  Purchase.objects.filter(client_id__in=berlin_clients)
+  ```
+
+- **Hand-written `.raw()` SQL:**
+
+  ```python
+  Purchase.objects.raw(
+      "SELECT p.id FROM bookshop_purchase p "
+      "JOIN bookshop_client c ON p.client_id = c.id"
+  )
+  ```
+
+- **Bare `cursor.execute()`** — the same join reached through a raw cursor.
+
+Queries that don't actually join across the boundary are **not** flagged — for
+example a foreign-key lookup by id, which Django resolves without a join:
+
+```python
+Purchase.objects.filter(client_id=42)     # reads one table
+Purchase.objects.filter(client__pk=42)    # Django trims the join
+```
 
 ## The report
 
@@ -93,10 +137,7 @@ Remove them from boundaries.toml:
 
 ## Known gaps
 
-A few crossings the plugin doesn't catch yet:
-
-- `prefetch_related`
-- Raw SQL (`.raw()`, `cursor.execute(...)`)
+- `prefetch_related` loads each related set as its own single-table query, so it never looks like a join and isn't caught.
 
 ## Status
 

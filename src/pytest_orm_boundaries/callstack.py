@@ -15,7 +15,7 @@ def _is_third_party(*, relative: Path) -> bool:
     return not _THIRD_PARTY_SEGMENTS.isdisjoint(relative.parts)
 
 
-def find_in_project_frames(*, root: Path) -> list[tuple[str, int]]:
+def find_frames_inside_project(*, root: Path) -> list[tuple[str, int]]:
     """(root-relative path, line) for each in-project frame, innermost first.
 
     Skips stdlib (outside root) and installed packages; frames[0] is the line

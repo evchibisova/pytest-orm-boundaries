@@ -60,7 +60,7 @@ def test_crossing_query_is_recorded(guard):
 
 
 def test_select_related_crossing_is_recorded(guard):
-    # select_related's join never reaches alias_map; it's read from klass_info.
+    # select_related emits an INNER JOIN in the SQL, which the parser reads.
     list(Order.objects.select_related("customer"))
     assert len(guard.violations) == 1
     assert guard.violations[0].crossed_aggregates == ("customer", "order")
@@ -68,6 +68,41 @@ def test_select_related_crossing_is_recorded(guard):
         "contenttypes.Customer",
         "contenttypes.Order",
     )
+
+
+def test_raw_sql_crossing_is_recorded(guard):
+    # .raw() runs through the same cursor path, so its join is seen too.
+    order, customer = Order._meta.db_table, Customer._meta.db_table
+    sql = f"SELECT o.id FROM {order} o JOIN {customer} c ON o.customer_id = c.id"
+    list(Order.objects.raw(sql))
+    assert len(guard.violations) == 1
+    assert guard.violations[0].crossed_aggregates == ("customer", "order")
+
+
+def test_bare_cursor_crossing_is_recorded(guard):
+    # A hand-written cursor.execute is intercepted by the same wrapper.
+    order, customer = Order._meta.db_table, Customer._meta.db_table
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT o.id FROM {order} o JOIN {customer} c ON o.customer_id = c.id"
+        )
+        cursor.fetchall()
+    assert len(guard.violations) == 1
+    assert guard.violations[0].crossed_aggregates == ("customer", "order")
+
+
+def test_subquery_crossing_is_recorded(guard):
+    # A table reached only through a subquery still counts as a crossing.
+    inner = Customer.objects.filter(name="Ann").values("id")
+    list(Order.objects.filter(customer_id__in=inner))
+    assert len(guard.violations) == 1
+    assert guard.violations[0].crossed_aggregates == ("customer", "order")
+
+
+def test_unparseable_data_query_is_skipped(guard):
+    # An unreadable data query is skipped without error (see ROADMAP for surfacing it).
+    guard._check_violations_in_query("SELECT * FROM", connection.vendor)
+    assert guard.violations == []
 
 
 def test_trimmed_fk_lookup_is_not_recorded(guard):

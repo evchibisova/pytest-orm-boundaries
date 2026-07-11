@@ -33,7 +33,7 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
     "Topic :: Software Development :: Testing",
 ]
-dependencies = ["pytest>=8"]
+dependencies = ["pytest>=8", "sqlglot>=30,<31"]
 
 [project.urls]
 Homepage = "https://github.com/evchibisova/pytest-orm-boundaries"
@@ -43,6 +43,9 @@ Changelog = "https://github.com/evchibisova/pytest-orm-boundaries/blob/main/CHAN
 
 [project.entry-points.pytest11]
 boundaries = "pytest_orm_boundaries.plugin"
+
+[tool.uv]
+exclude-newer = "2 weeks"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,6 +1,6 @@
 """Rendering of the grouped violation report (no Django needed)."""
 
-from pytest_orm_boundaries import build_report
+from pytest_orm_boundaries import report
 from pytest_orm_boundaries.guard import ViolationRecord
 
 
@@ -17,7 +17,7 @@ class _FakeReporter:
 
 def _render(violations, *, verbose=False):
     reporter = _FakeReporter()
-    build_report.report_violations(
+    report.report_violations(
         terminalreporter=reporter, violations=violations, verbose=verbose
     )
     return reporter.lines
