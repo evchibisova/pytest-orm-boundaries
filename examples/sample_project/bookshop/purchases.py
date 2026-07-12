@@ -7,7 +7,7 @@ described in boundaries.toml, so the tests must catch it.
 from bookshop.models import Purchase, PurchaseLine
 
 
-# No violations: Purchase and PurchaseLine are in the same aggregate.
+# No crossings: Purchase and PurchaseLine are in the same aggregate.
 def make_purchase(client, reference, lines):
     purchase = Purchase.objects.create(client=client, reference=reference)
     for book, quantity in lines:
@@ -17,7 +17,7 @@ def make_purchase(client, reference, lines):
     return purchase
 
 
-# No violations: Purchase and PurchaseLine are in the same aggregate.
+# No crossings: Purchase and PurchaseLine are in the same aggregate.
 def get_lines_in_purchase(reference):
     """Lines of a purchase — joins PurchaseLine -> Purchase (same aggregate)."""
     return list(PurchaseLine.objects.filter(purchase__reference=reference))

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,18 +12,17 @@ from pytest_orm_boundaries.config import (
     CONFIG_FILE_NAME,
     BoundariesConfigError,
     discover_config_path,
+    load_config,
 )
-from pytest_orm_boundaries.guard import build_guard
-
-if TYPE_CHECKING:
-    from pytest_orm_boundaries.guard import BoundaryGuard
+from pytest_orm_boundaries.guard import BoundaryGuard
+from pytest_orm_boundaries.ignores import IgnoreTracker
 
 config_path_key = pytest.StashKey[Path | None]()
 guard_key = pytest.StashKey["BoundaryGuard"]()
 
 
 class BoundariesConfigWarning(UserWarning):
-    """Plugin is installed but no config file was found."""
+    """Plugin is installed but won't run: no config file, or Django is absent."""
 
 
 def _installed_guard(config: pytest.Config) -> BoundaryGuard | None:
@@ -51,6 +50,20 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def _build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
+    """Build the guard from config, or None if no aggregates are declared."""
+    config = load_config(path=config_path)
+    if not config.aggregates_by_model:
+        return None
+
+    tracker = IgnoreTracker(patterns=config.ignored_files)
+    return BoundaryGuard(
+        aggregates_config=config.aggregates_by_model,
+        ignore_tracker=tracker,
+        root=rootpath,
+    )
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Resolve config and install the guard, stashing both for later hooks:
     the config path for the report header, the guard for teardown and reporting.
@@ -66,7 +79,15 @@ def pytest_configure(config: pytest.Config) -> None:
             config.issue_config_time_warning(warning, stacklevel=2)
             return
 
-        guard = build_guard(rootpath=config.rootpath, config_path=config_path)
+        if importlib.util.find_spec("django") is None:
+            warning = BoundariesConfigWarning(
+                f"{CONFIG_FILE_NAME} found but Django is not installed, no checks "
+                "will run (install pytest-orm-boundaries[django])"
+            )
+            config.issue_config_time_warning(warning, stacklevel=2)
+            return
+
+        guard = _build_guard(rootpath=config.rootpath, config_path=config_path)
         if guard is not None:
             guard.install()
             config.stash[guard_key] = guard
@@ -82,7 +103,7 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
-    """Tell the guard which test is running so a violation can name it."""
+    """Tell the guard which test is running so a crossing can name it."""
     guard = _installed_guard(item.config)
     if guard is not None:
         guard.set_current_test(item.nodeid)
@@ -96,7 +117,7 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """A clean-but-violating run must still fail the run (via the exit code)."""
     guard = _installed_guard(session.config)
-    if guard is not None and guard.violations and exitstatus == pytest.ExitCode.OK:
+    if guard is not None and guard.crossings and exitstatus == pytest.ExitCode.OK:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
@@ -108,9 +129,9 @@ def pytest_terminal_summary(
     guard = _installed_guard(config)
     if guard is None:
         return
-    report.report_violations(
+    report.report_crossings(
         terminalreporter=terminalreporter,
-        violations=guard.violations,
+        crossings=guard.crossings,
         verbose=config.getoption("verbose", 0) > 0,
     )
     stale = guard.find_stale_patterns()

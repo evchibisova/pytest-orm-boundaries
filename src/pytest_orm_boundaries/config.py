@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,14 @@ CONFIG_FILE_NAME = "boundaries.toml"
 
 class BoundariesConfigError(Exception):
     """Raised when the config file is malformed or semantically invalid."""
+
+
+@dataclass(frozen=True)
+class BoundariesConfig:
+    """Parsed and validated content of a ``boundaries.toml``."""
+
+    aggregates_by_model: dict[str, str]  # {"app.model" lower-cased: aggregate_name}
+    ignored_files: list[str]  # glob patterns
 
 
 def discover_config_path(*, explicit: str | None, rootpath: Path) -> Path | None:
@@ -29,6 +38,14 @@ def discover_config_path(*, explicit: str | None, rootpath: Path) -> Path | None
     return default if default.is_file() else None
 
 
+def load_config(*, path: Path) -> BoundariesConfig:
+    data = _read_config(path=path)
+    return BoundariesConfig(
+        aggregates_by_model=_parse_aggregates(data=data, path=path),
+        ignored_files=_parse_ignored_files(data=data, path=path),
+    )
+
+
 def _read_config(*, path: Path) -> dict[str, Any]:
     try:
         with path.open("rb") as fh:
@@ -37,16 +54,14 @@ def _read_config(*, path: Path) -> dict[str, Any]:
         raise BoundariesConfigError(f"{path}: invalid TOML ({exc})") from exc
 
 
-def load_aggregates_from_config(*, path: Path) -> dict[str, str]:
-    """Parse the config into a {model_label: aggregate_name} map.
+def _parse_aggregates(*, data: dict[str, Any], path: Path) -> dict[str, str]:
+    """Build a {model_label: aggregate_name} map from the ``[aggregates]`` table.
 
     Model labels are lower-cased ("app_label.modelname") for case-insensitive
     matching.
     """
-    config = _read_config(path=path)
-
     aggregates_by_model: dict[str, str] = {}
-    for aggregate, members in config.get("aggregates", {}).items():
+    for aggregate, members in data.get("aggregates", {}).items():
         if isinstance(members, dict):
             members = members.get("models", [])
         if not isinstance(members, list):
@@ -67,10 +82,8 @@ def load_aggregates_from_config(*, path: Path) -> dict[str, str]:
     return aggregates_by_model
 
 
-def load_ignored_files_from_config(*, path: Path) -> list[str]:
-    """Parse ``[ignore] files`` into a list of glob patterns."""
-    data = _read_config(path=path)
-
+def _parse_ignored_files(*, data: dict[str, Any], path: Path) -> list[str]:
+    """Read ``[ignore] files`` into a list of glob patterns."""
     ignore = data.get("ignore", {})
     if not isinstance(ignore, dict):
         raise BoundariesConfigError(f"{path}: [ignore] must be a table")

@@ -42,3 +42,8 @@ def test_list_lines_with_purchase():
 def test_count_purchases_for_client():
     # Filter by FK id -> reads one column, no join -> clean.
     reports.count_purchases_for_client(1)
+
+
+def test_list_purchases_with_client_prefetched():
+    # prefetch_related loads Client in a separate query -> crosses (reported).
+    reports.list_purchases_with_client_prefetched()
