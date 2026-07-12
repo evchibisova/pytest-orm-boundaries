@@ -4,10 +4,7 @@ from textwrap import dedent
 
 import pytest
 
-from pytest_orm_boundaries.config import (
-    BoundariesConfigError,
-    load_ignored_files_from_config,
-)
+from pytest_orm_boundaries.config import BoundariesConfigError, load_config
 from pytest_orm_boundaries.ignores import IgnoreTracker
 
 
@@ -23,7 +20,7 @@ def _write(tmp_path, text: str):
 
 def test_no_ignore_section_is_empty(tmp_path):
     path = _write(tmp_path, '[aggregates]\norder = ["shop.Order"]\n')
-    assert load_ignored_files_from_config(path=path) == []
+    assert load_config(path=path).ignored_files == []
 
 
 def test_loads_file_patterns_in_order(tmp_path):
@@ -34,7 +31,7 @@ def test_loads_file_patterns_in_order(tmp_path):
         files = ["tests/test_a.py", "tests/legacy/*"]
         """,
     )
-    assert load_ignored_files_from_config(path=path) == [
+    assert load_config(path=path).ignored_files == [
         "tests/test_a.py",
         "tests/legacy/*",
     ]
@@ -43,19 +40,19 @@ def test_loads_file_patterns_in_order(tmp_path):
 def test_ignore_not_a_table_raises(tmp_path):
     path = _write(tmp_path, 'ignore = "tests/test_a.py"\n')
     with pytest.raises(BoundariesConfigError, match="must be a table"):
-        load_ignored_files_from_config(path=path)
+        load_config(path=path)
 
 
 def test_ignore_files_not_a_list_raises(tmp_path):
     path = _write(tmp_path, '[ignore]\nfiles = "tests/test_a.py"\n')
     with pytest.raises(BoundariesConfigError, match="must be a list"):
-        load_ignored_files_from_config(path=path)
+        load_config(path=path)
 
 
 def test_ignore_files_non_string_entry_raises(tmp_path):
     path = _write(tmp_path, "[ignore]\nfiles = [123]\n")
     with pytest.raises(BoundariesConfigError, match="non-string entry"):
-        load_ignored_files_from_config(path=path)
+        load_config(path=path)
 
 
 def test_has_ignore_for_a_listed_file():
@@ -77,7 +74,7 @@ def test_inactive_when_no_patterns():
     assert _tracker([]).is_active is False
 
 
-def test_stale_when_file_ran_without_a_violation():
+def test_stale_when_file_ran_without_a_crossing():
     tracker = _tracker(["app/billing.py"])
     tracker.mark_seen(file_paths=["app/billing.py"])  # ran a query, but stayed clean
     assert tracker.find_stale_patterns() == ["app/billing.py"]

@@ -2,45 +2,84 @@
 
 Plan to improve. Not commitments - priorities can shift.
 
-## Match ignores to the file that issues the query
 
-An ignore matches if its file appears anywhere in the call chain, not just where
-the query runs - so it can silence a crossing that only passes through, and can
-make a stale ignore look live. Match ignores (and the stale check) to the file
-that issues the query.
+## Test supported versions in CI
 
-## Warn on unknown models in the config
+Run the suite on every push and pull request across the supported Python/Django
+matrix. Add a canary job for the next Django release, and publish only after a
+green run.
 
-A mistyped model name in `boundaries.toml` is silently left unchecked - you think
-it's protected when it isn't. On startup, warn about names that match no real
-model.
+## Add an end-to-end plugin test
+
+Run pytest against a real sample project and assert the crossing report and
+exit code, not just the individual components.
+
+## Test for false positives
+
+Cover cached and prefetched relations that issue no SQL, unrelated queries that
+carry instance hints, and coexistence with other Django instrumentation.
+
+## Report the application call site
+
+Exclude the plugin's own frames so editable installs still point to the
+application line that triggered the crossing.
 
 ## Catch crossings it currently misses
 
 Genuine crossings that never trip the join rule:
 
-- **`prefetch_related`** - runs as a separate single-table query, so it never
-  looks like a join.
+- lazy reads such as `purchase.client`;
+- reverse-FK and M2M reads such as `client.purchases.all()`;
+- related writes such as `.create()`, `.add()`, `.set()`, `.remove()`,
+  `.clear()`, `.update()`, and `.delete()`.
 
-## Surface queries the parser couldn't read
 
-Some executed SQL can't be parsed, and right now those statements are skipped
-silently. Need to collect and report them, so they can be found and either fixed or handled.
+## Match ignores at the query site
+
+Match ignores, including stale-ignore tracking, to the file that issues the
+query rather than any file in its call chain.
+
+## Add `[allow]` for intentional crossings
+
+Give `[allow]` the same file matching as `[ignore]`, but different semantics:
+allows describe intentional architecture and never become stale; ignores track
+known debt. This supports CQRS read models and reports that legitimately span
+aggregates.
+
+## Warn about unknown models
+
+Warn at startup when a model named in `boundaries.toml` does not exist.
+
+## Add `orm-boundaries init`
+
+Generate a deterministic starter `boundaries.toml` from installed Django
+models. Suggest Django apps as an editable starting point, never overwrite an
+existing file by default, and print the next step.
+
+## Make aggregate config explicit
+
+Move from `client = ["shop.Client"]` to an extensible table form such as
+`[aggregates.client]` with `models = [...]`. Keep the shorthand during a
+deprecation period and ship the migration separately from feature changes.
+
+## Surface unparsed queries
+
+Collect and report SQL statements the parser could not inspect instead of
+silently skipping them.
 
 ## Show how much was inspected
 
-The plugin only sees queries that tests run, so a summary like "inspected N
-queries across M tests" confirms the guard was active and how much was covered.
+Report the number of inspected queries and tests so users can see that the
+guard ran and how much their suite exercised.
 
+## Make ignore matching cheaper
 
-## Later
+Avoid walking the full call stack for every clean query when ignores are set.
 
-### Cheaper checking when ignores are set
+## Make the project root configurable
 
-With `[ignore]` entries, the plugin walks the call stack on every query, clean
-ones included - a hot path on large suites worth making cheaper.
+Allow the config to pin the root used for matching file paths.
 
-### Configurable project root
+## Measure instrumentation overhead
 
-Ignore paths depend on where pytest thinks the root is, which can shift. Let the
-config pin the root.
+Benchmark the plugin on a large suite and publish the slowdown.

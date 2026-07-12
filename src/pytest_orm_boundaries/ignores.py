@@ -7,7 +7,7 @@ from fnmatch import fnmatch
 
 
 class IgnoreTracker:
-    """Decides whether a violation is ignored, and reports ignore globs that went
+    """Decides whether a crossing is ignored, and reports ignore globs that went
     stale - their file ran but never crossed a boundary."""
 
     def __init__(self, *, patterns: Iterable[str]) -> None:

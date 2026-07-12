@@ -5,12 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-12
+
+### Added
+
+- Catch `prefetch_related` crossings.
+
+### Changed
+
+- Django is pulled in through the optional `django` extra
+  (`pip install "pytest-orm-boundaries[django]"`). The plugin no longer fails to import when Django is absent - it warns and runs no checks.
+
 ## [0.4.0] - 2026-07-11
 
 ### Added
 
-- Catch more crossings: `select_related`, subqueries, and hand-written SQL
-  (`.raw()`, `cursor.execute(...)`).
+- Catch more crossings: `select_related`, subqueries, and hand-written SQL (`.raw()`, `cursor.execute(...)`).
 
 ### Changed
 
@@ -22,8 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Clearer boundary report: each offending place now shows the crossed aggregates
-  and the joined models.
+- Clearer boundary report: each offending place now shows the crossed aggregates and the joined models.
 
 ## [0.3.0] - 2026-07-06
 
@@ -35,11 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Stack inspection no longer treats installed packages as project code: frames under `site-packages`/`dist-packages` are skipped, so the reported place points at application code.
-
-## [0.2.1] - 2026-07-05
-
-### Fixed
-
 - Filtering by a foreign-key id no longer raises a false `BoundaryViolation`:
   the linked table is planned but never actually read, so it isn't a crossing.
 
@@ -48,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Per-file ignores: an `[ignore] files` list of globs in `boundaries.toml`.
-- Stale-ignore hint: when an ignored file runs without any violation, the plugin
+- Stale-ignore hint: when an ignored file runs without any crossing, the plugin
   reports it at the end of the session.
 
 ## [0.1.0] - 2026-06-24
@@ -60,8 +64,9 @@ Initial alpha release.
 - Django ORM support: detects cross-aggregate access in the queries your test suite
   executes.
 
-[Unreleased]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.2.0...v0.2.1
+[0.5.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/evchibisova/pytest-orm-boundaries/releases/tag/v0.1.0

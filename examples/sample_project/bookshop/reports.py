@@ -24,3 +24,9 @@ def list_lines_with_purchase():
 def count_purchases_for_client(client_id):
     """Purchases for a client id — filters the FK column, no join, no crossing."""
     return Purchase.objects.filter(client_id=client_id).count()
+
+
+# Crosses the boundary: prefetch_related loads Client with a second query.
+def list_purchases_with_client_prefetched():
+    """Purchases with clients preloaded — prefetch_related crosses purchase -> client."""
+    return list(Purchase.objects.prefetch_related("client"))

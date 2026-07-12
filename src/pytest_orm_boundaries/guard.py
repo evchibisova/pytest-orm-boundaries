@@ -1,41 +1,41 @@
-"""Django boundary guard: applies the aggregate-crossing rule to the queries a
-test suite executes and records the crossings.
+"""Django boundary guard: watches the queries a test suite executes and checks crossing.
+
+Two sources of crossings: the SQL of each executed query, and the relation path
+of each ``prefetch_related``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import weakref
+from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pytest_orm_boundaries.callstack import find_frames_inside_project
-from pytest_orm_boundaries.config import (
-    load_aggregates_from_config,
-    load_ignored_files_from_config,
-)
-from pytest_orm_boundaries.ignores import IgnoreTracker
+from pytest_orm_boundaries.crossings import CrossingTracker
 from pytest_orm_boundaries.model_resolution import resolve_labels
+from pytest_orm_boundaries.prefetch_resolution import resolve_prefetch_step_models
 from pytest_orm_boundaries.sql_parsing import extract_table_names, looks_like_data_query
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from django.db.backends.base.base import BaseDatabaseWrapper
+
+    from pytest_orm_boundaries.crossings import CrossingRecord
+    from pytest_orm_boundaries.ignores import IgnoreTracker
 
 
 @dataclass
-class ViolationRecord:
-    """One offending call place and the tests that reached it.
+class _HookState:
+    """On/off switch for one installed prefetch wrapper.
 
-    Grouped by call place so a crossing shared by many tests is one entry,
-    not one line per test.
+    We monkey-patch Django's ``prefetch_related_objects``. On uninstall we
+    restore the original when our wrapper is still on top - but if another tool
+    wrapped it above ours, that tool holds a reference to our wrapper and we
+    can't take it out of the chain. So instead of removing it we set ``active``
+    to False: the wrapper keeps being called but does nothing.
     """
 
-    file: str
-    line_number: int
-    crossed_aggregates: tuple[str, ...]  # ("order", "payment")
-    joined_models: tuple[str, ...]  # ("order.Invoice", "payrolls.IncomePayment")
-    tests: set[str] = field(default_factory=set)
+    active: bool
 
 
 class BoundaryGuard:
@@ -48,12 +48,15 @@ class BoundaryGuard:
         ignore_tracker: IgnoreTracker,
         root: Path,
     ) -> None:
-        self._aggregates_config = aggregates_config
-        self._ignore_tracker = ignore_tracker
-        self._root_path = Path(root)
-        self._current_test: str | None = None
-        self._violations: dict[tuple[str, int, tuple[str, ...]], ViolationRecord] = {}
+        self._tracker = CrossingTracker(
+            aggregates_config=aggregates_config,
+            ignore_tracker=ignore_tracker,
+            root=root,
+        )
         self._attached_connections: list[BaseDatabaseWrapper] = []
+        self._original_prefetch = None
+        self._prefetch_wrapper = None
+        self._prefetch_hook_state: _HookState | None = None
 
     def install(self) -> None:
         """Attach to every DB connection: those open now and any opened later
@@ -65,10 +68,12 @@ class BoundaryGuard:
         connection_created.connect(self._handle_connection_created, weak=False)
         for connection in connections.all(initialized_only=True):
             self._attach_wrapper(connection)
+        self._install_prefetch_hook()
 
     def uninstall(self) -> None:
         from django.db.backends.signals import connection_created
 
+        self._remove_prefetch_hook()
         connection_created.disconnect(self._handle_connection_created)
         for connection in self._attached_connections:
             try:
@@ -87,107 +92,85 @@ class BoundaryGuard:
             connection.execute_wrappers.append(self._execute_wrapper)
             self._attached_connections.append(connection)
 
+    def _install_prefetch_hook(self) -> None:
+        """Wrap django ``prefetch_related_objects`` so each prefetch reports the
+        models it walks between.
+        """
+        import django.db.models.query as query_module
+
+        if self._prefetch_wrapper is not None:
+            # Already installed. A second install would capture our own wrapper
+            # as ``original`` and orphan the first _HookState
+            return
+
+        original = query_module.prefetch_related_objects
+        # hook can be switched off even when it can't be removed from the chain.
+        state = _HookState(active=True)
+        # strong ref is config.stash[guard_key]
+        guard_ref = weakref.ref(self)
+
+        @wraps(original)
+        def prefetch_with_check(model_instances, *lookups):
+            result = original(model_instances, *lookups)
+            guard = guard_ref()
+            if state.active and guard is not None:
+                guard._handle_prefetch(
+                    model_instances=model_instances, lookups=lookups
+                )
+            return result
+
+        self._prefetch_hook_state = state
+        self._original_prefetch = original
+        self._prefetch_wrapper = prefetch_with_check
+        query_module.prefetch_related_objects = prefetch_with_check
+
+    def _remove_prefetch_hook(self) -> None:
+        import django.db.models.query as query_module
+
+        if self._prefetch_wrapper is None:
+            return
+        # Disable our hook unconditionally. Restore the previous callable only
+        # when ours is still topmost; otherwise another wrapper may still
+        # reference it, and ours stays in the chain as an inert no-op.
+        self._prefetch_hook_state.active = False
+        if query_module.prefetch_related_objects is self._prefetch_wrapper:
+            query_module.prefetch_related_objects = self._original_prefetch
+        self._prefetch_hook_state = None
+        self._prefetch_wrapper = None
+        self._original_prefetch = None
+
     def _execute_wrapper(self, execute, sql, params, many, context):
         if looks_like_data_query(sql):
-            self._check_violations_in_query(sql, context["connection"].vendor)
+            self._handle_query(sql, context["connection"].vendor)
         return execute(sql, params, many, context)
 
     def set_current_test(self, nodeid: str | None) -> None:
         """Remember which test is running so a recorded crossing can name it."""
-        self._current_test = nodeid
+        self._tracker.set_current_test(nodeid)
 
     @property
-    def violations(self) -> list[ViolationRecord]:
-        """Recorded crossings, most-affecting first (then by call place)."""
-        return sorted(
-            self._violations.values(),
-            key=lambda v: (-len(v.tests), v.file, v.line_number),
-        )
+    def crossings(self) -> list[CrossingRecord]:
+        return self._tracker.crossings
 
     def find_stale_patterns(self) -> list[str]:
-        return self._ignore_tracker.find_stale_patterns()
+        return self._tracker.find_stale_patterns()
 
-    def _check_violations_in_query(self, sql: str, vendor: str) -> None:
-        """Handle one executed data query: gather stack context, apply the
-        aggregate rule, and record a crossing (unless it's clean or ignored).
-        """
-        # ``frames`` is the in-project part of this query's call stack,
-        # used by the ignore/stale check and the report.
-        frames: list[tuple[str, int]] | None = None
-        file_paths: set[str] | None = None
-        if self._ignore_tracker.is_active:
-            frames = find_frames_inside_project(root=self._root_path)
-            file_paths = {path for path, _ in frames}
-            self._ignore_tracker.mark_seen(file_paths=file_paths)
-
+    def _handle_query(self, sql: str, vendor: str) -> None:
+        """Map one executed data query to its table labels and check them."""
         table_names = extract_table_names(sql, vendor)
-        if table_names is None:  # unparseable data query -- skip it (see ROADMAP)
+        if table_names is None:
             return
         labels = resolve_labels(table_names)
-        crossing = self._find_crossing(labels=labels)
-        if crossing is None:
-            return
+        self._tracker.check(label_sets=[labels])
 
-        if file_paths is not None and self._ignore_tracker.has_ignore_for(
-            file_paths=file_paths
-        ):
-            self._ignore_tracker.mark_used(file_paths=file_paths)
+    def _handle_prefetch(self, *, model_instances, lookups) -> None:
+        """Map one prefetch to the model pair per relation step and check them."""
+        if not model_instances:
             return
-
-        if frames is None:
-            frames = find_frames_inside_project(root=self._root_path)
-        self._record_violation(
-            call_place=frames[0] if frames else None, crossing=crossing
+        source_model = type(model_instances[0])
+        step_model_pairs = resolve_prefetch_step_models(
+            source_model=source_model, lookups=lookups
         )
-
-    def _find_crossing(
-        self, *, labels: Iterable[str]
-    ) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
-        """Return ``(crossed aggregate names, joined model labels)`` if the query
-        crosses a boundary, else None.
-
-        e.g. ``(("order", "payment"), ("order.Invoice", "payrolls.IncomePayment"))``.
-        """
-        aggregate_by_label = {
-            label: aggregate
-            for label in labels
-            if (aggregate := self._aggregates_config.get(label.lower())) is not None
-        }
-        aggregates = set(aggregate_by_label.values())
-        if len(aggregates) <= 1:
-            return None
-        return tuple(sorted(aggregates)), tuple(sorted(aggregate_by_label.keys()))
-
-    def _record_violation(
-        self,
-        *,
-        call_place: tuple[str, int] | None,
-        crossing: tuple[tuple[str, ...], tuple[str, ...]],
-    ) -> None:
-        crossed_aggregates, joined_models = crossing
-        file, line = call_place if call_place is not None else ("<unknown>", 0)
-        key = (file, line, crossed_aggregates)
-        record = self._violations.get(key)
-        if record is None:
-            record = ViolationRecord(
-                file=file,
-                line_number=line,
-                crossed_aggregates=crossed_aggregates,
-                joined_models=joined_models,
-            )
-            self._violations[key] = record
-        if self._current_test is not None:
-            record.tests.add(self._current_test)
-
-
-def build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
-    aggregates_by_model = load_aggregates_from_config(path=config_path)
-    if not aggregates_by_model:
-        return None
-
-    ignore_patterns = load_ignored_files_from_config(path=config_path)
-    tracker = IgnoreTracker(patterns=ignore_patterns)
-
-    return BoundaryGuard(
-        aggregates_config=aggregates_by_model, ignore_tracker=tracker, root=rootpath
-    )
+        if not step_model_pairs:
+            return
+        self._tracker.check(label_sets=step_model_pairs)
