@@ -159,10 +159,6 @@ class BoundaryGuard:
         """Map one executed data query to its table labels and check them."""
         table_names = extract_table_names(sql, vendor)
         if table_names is None:
-            # Unparseable query: nothing to check, but still run the tracker so
-            # this file counts as having run a query and its ignore isn't later
-            # reported as stale.
-            self._tracker.check(label_sets=[])
             return
         labels = resolve_labels(table_names)
         self._tracker.check(label_sets=[labels])
