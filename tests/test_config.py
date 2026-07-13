@@ -104,7 +104,7 @@ def test_models_must_be_a_list(tmp_path):
 
 def test_non_string_member_raises(tmp_path):
     path = _write(tmp_path, "[aggregates.order]\nmodels = [123]\n")
-    with pytest.raises(BoundariesConfigError, match="non-string entry"):
+    with pytest.raises(BoundariesConfigError, match="non-string member"):
         load_config(path=path)
 
 
