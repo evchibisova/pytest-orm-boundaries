@@ -232,6 +232,20 @@ def test_prefetch_within_aggregate_is_not_recorded(guard):
     assert guard.crossings == []
 
 
+def test_prefetch_with_values_list_is_skipped(guard):
+    customer = Customer.objects.create(name="Flo")
+    order = Order.objects.create(customer=customer)
+
+    result = list(
+        Order.objects.filter(pk=order.pk)
+        .prefetch_related("customer")
+        .values_list("id", flat=True)
+    )
+
+    assert result == [order.pk]
+    assert guard.crossings == []
+
+
 def test_prefetch_not_recorded_after_uninstall_when_another_tool_wraps_on_top():
     # Invariant: after uninstall the guard must never record again. Here another
     # tool wraps prefetch on top of ours, so our uninstall can't restore the
