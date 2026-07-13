@@ -37,7 +37,10 @@ Genuine crossings that never trip the join rule:
 ## Match ignores at the query site
 
 Match ignores, including stale-ignore tracking, to the file that issues the
-query rather than any file in its call chain.
+query rather than any file in its call chain. This also fixes false stale
+reports in suites split across CI jobs: a shared file that other tests merely
+pass through no longer counts the ignore as exercised, so a job that never
+runs the crossing test stops reporting the ignore as stale.
 
 ## Warn about unknown models
 

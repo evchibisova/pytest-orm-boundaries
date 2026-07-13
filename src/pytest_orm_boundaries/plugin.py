@@ -20,6 +20,7 @@ from pytest_orm_boundaries.ignores import IgnoreTracker
 
 config_path_key = pytest.StashKey[Path | None]()
 guard_key = pytest.StashKey["BoundaryGuard"]()
+worker_output_key = "pytest_orm_boundaries"
 
 
 class BoundariesConfigWarning(UserWarning):
@@ -120,8 +121,23 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None):
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """A clean-but-violating run must still fail the run (via the exit code)."""
     guard = _installed_guard(session.config)
-    if guard is not None and guard.crossings and exitstatus == pytest.ExitCode.OK:
+    if guard is None:
+        return
+    if hasattr(session.config, "workerinput"):
+        session.config.workeroutput[worker_output_key] = guard.serialize_state()
+        return
+    if guard.crossings and exitstatus == pytest.ExitCode.OK:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error) -> None:
+    """Merge one xdist worker's results into the controller's guard."""
+    guard = _installed_guard(node.config)
+    worker_output = getattr(node, "workeroutput", {})
+    state = worker_output.get(worker_output_key)
+    if guard is not None and state is not None:
+        guard.merge_state(state)
 
 
 def pytest_terminal_summary(

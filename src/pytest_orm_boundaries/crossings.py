@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from pytest_orm_boundaries.callstack import find_frames_inside_project
 
@@ -24,6 +24,24 @@ class CrossingRecord:
     crossed_aggregates: tuple[str, ...]  # ("order", "payment")
     involved_models: tuple[str, ...]  # ("order.Invoice", "payrolls.IncomePayment")
     tests: set[str] = field(default_factory=set)
+
+
+class SerializedCrossing(TypedDict):
+    """One crossing encoded using values supported by xdist's worker channel."""
+
+    file: str
+    line_number: int
+    crossed_aggregates: list[str]
+    involved_models: list[str]
+    tests: list[str]
+
+
+class SerializedTrackerState(TypedDict):
+    """All process-local result state that the xdist controller must merge."""
+
+    crossings: list[SerializedCrossing]
+    seen_ignore_patterns: list[str]
+    used_ignore_patterns: list[str]
 
 
 class CrossingTracker:
@@ -137,3 +155,46 @@ class CrossingTracker:
     def find_stale_patterns(self) -> list[str]:
         """Ignore globs whose file ran but never crossed -- safe to delete."""
         return self._ignore_tracker.find_stale_patterns()
+
+    def serialize_state(self) -> SerializedTrackerState:
+        """Encode collected results using only xdist-serializable values."""
+        seen, used = self._ignore_tracker.export_matched_patterns()
+        return {
+            "crossings": [
+                {
+                    "file": crossing.file,
+                    "line_number": crossing.line_number,
+                    "crossed_aggregates": list(crossing.crossed_aggregates),
+                    "involved_models": list(crossing.involved_models),
+                    "tests": sorted(crossing.tests),
+                }
+                for crossing in self.crossings
+            ],
+            "seen_ignore_patterns": sorted(seen),
+            "used_ignore_patterns": sorted(used),
+        }
+
+    def merge_state(self, state: SerializedTrackerState) -> None:
+        """Merge results collected by another process into this tracker."""
+        for crossing in state["crossings"]:
+            crossed = (
+                tuple(crossing["crossed_aggregates"]),
+                tuple(crossing["involved_models"]),
+            )
+            tests = crossing["tests"]
+            if not tests:
+                self.add_record(
+                    call_place=(crossing["file"], crossing["line_number"]),
+                    crossing=crossed,
+                    test=None,
+                )
+            for test in tests:
+                self.add_record(
+                    call_place=(crossing["file"], crossing["line_number"]),
+                    crossing=crossed,
+                    test=test,
+                )
+        self._ignore_tracker.merge_matched_patterns(
+            seen=state["seen_ignore_patterns"],
+            used=state["used_ignore_patterns"],
+        )
