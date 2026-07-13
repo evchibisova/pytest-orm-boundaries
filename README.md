@@ -31,14 +31,19 @@ pytest discovers the plugin automatically.
 
 ## Configure
 
-Declare your aggregates in `boundaries.toml` at the project root (or point at
-the file with `--boundaries-config` / the `boundaries_config` ini option):
+Declare your aggregates and their Django models in `boundaries.toml` at the project
+root (or point at the file with `--boundaries-config` / the
+`boundaries_config` ini option):
 
 ```toml
-[aggregates]
-client   = ["bookshop.Client"]
-book     = ["bookshop.Book"]
-purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
+[aggregates.client]
+models = ["bookshop.Client"]
+
+[aggregates.book]
+models = ["bookshop.Book"]
+
+[aggregates.purchase]
+models = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 ```
 
 Models are written as `app_label.Model`. Models not listed in any aggregate are
