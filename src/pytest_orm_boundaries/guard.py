@@ -170,7 +170,12 @@ class BoundaryGuard:
         """Map one prefetch to the model pair per relation step and check them."""
         if not model_instances:
             return
-        source_model = type(model_instances[0])
+        from django.db.models import Model
+
+        first = model_instances[0]
+        if not isinstance(first, Model):
+            return
+        source_model = type(first)
         step_model_pairs = resolve_prefetch_step_models(
             source_model=source_model, lookups=lookups
         )
