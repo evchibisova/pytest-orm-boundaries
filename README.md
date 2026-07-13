@@ -1,10 +1,10 @@
 # pytest-orm-boundaries
 
-> 💡 **Even if you control your imports — boundaries still can leak through the ORM**
+💡 **Even if you control your imports, boundaries can still leak through the ORM.**
 
-A `pytest-orm-boundaries` is a pytest plugin that reports ORM queries crossing your DDD aggregate boundaries.
+`pytest-orm-boundaries` is a pytest plugin that reports ORM queries crossing your DDD aggregate boundaries.
 
-Currently works with Django ORM.
+Currently works with Django ORM, SQLAlchemy is in roadmap.
 
 In domain-driven design, an aggregate is a consistency boundary: code in one
 aggregate should not reach into the internals of another. Django's `__` relation
@@ -15,8 +15,8 @@ lookups make it easy to cross those boundaries silently:
 Purchase.objects.get(client__name="John")
 ```
 
-`pytest-orm-boundaries` watches the queries your test suite executes and reports
-the ones that step outside their aggregate — through `__` lookups,
+`pytest-orm-boundaries` watches the ORM activity exercised by your test suite
+and reports access that crosses a configured boundary - through `__` lookups,
 `select_related`, `prefetch_related`, subqueries, or hand-written `.raw()` SQL.
 
 ## Install
@@ -46,8 +46,9 @@ not checked. Without a config file the plugin emits a warning and runs no checks
 
 ## What it catches
 
-The plugin flags queries that read across an aggregate boundary. Each example below couples
-the `purchase` and `client` aggregates:
+The plugin flags executed ORM access that spans more than one configured group.
+In the DDD example below, each crossing couples the `purchase` and `client`
+aggregates:
 
 - `__` relation lookups:
 
@@ -85,7 +86,7 @@ the `purchase` and `client` aggregates:
   Purchase.objects.prefetch_related("client")
   ```
 
-Queries that don't actually join across the boundary are **not** flagged — for
+Queries that don't actually join across the boundary are **not** flagged - for
 example a foreign-key lookup by id, which Django resolves without a join:
 
 ```python
@@ -114,11 +115,22 @@ Each entry names the aggregates the query crossed and the models it joined.
 Places are ordered by how many tests they affect. Pass `-v` to see every affected test
 (otherwise the list is capped at 5 per place).
 
-## Ignoring files
+## Allow and ignore
 
-Add exceptions so that known offenders keep passing while you fix them one file at a time:
+CQRS read models may cross boundaries intentionally, also existing application code may contain crossings you want to fix over time. [allow] and [ignore] let you tell the plugin which is which:
+
+- `[allow]` - the crossing is **intentional**. Use it for code that is meant to
+  span aggregates, such as CQRS read models or cross-aggregate reports. An
+  allowed crossing is suppressed and never reported.
+- `[ignore]` - the crossing is **known debt** you plan to fix. It is suppressed
+  for now, and the plugin reminds you when an entry is no longer needed.
 
 ```toml
+[allow]
+files = [
+    "app/reports/sales_summary.py",
+]
+
 [ignore]
 files = [
     "app/billing.py",
@@ -126,14 +138,14 @@ files = [
 ]
 ```
 
-Each entry is a glob ([`fnmatch`](https://docs.python.org/3/library/fnmatch.html),
+Each entry is a glob ([`fnmatch`](https://docs.python.org/3/library/fnmatch.html)),
 resolved relative to pytest's root directory and matched against either:
 
 - the file that issues the query, or
 - the test file.
 
-If an ignored file runs queries through the whole suite without ever crossing a
-boundary, the plugin says so at the end:
+An `[ignore]` whose file runs through the whole suite without ever crossing a
+boundary is stale — it is clean now, so the plugin lists it for removal:
 
 ```
 ======================= orm-boundaries: stale ignores ========================
@@ -141,6 +153,9 @@ These [ignore] entries no longer suppress any boundary crossing - their files ar
 Remove them from boundaries.toml:
   - app/billing.py
 ```
+
+`[allow]` entries are never reported this way. If a file sits in both sections,
+the allow wins and its `[ignore]` entry shows up as stale to remove.
 
 ## A note on Django internals
 

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pytest_orm_boundaries.allows import AllowList
 from pytest_orm_boundaries.crossings import CrossingTracker
 from pytest_orm_boundaries.ignores import IgnoreTracker
 
@@ -12,9 +13,10 @@ AGGREGATES = {
 }
 
 
-def _make_tracker(*, patterns=()):
+def _make_tracker(*, patterns=(), allow_patterns=()):
     return CrossingTracker(
         aggregates_config=AGGREGATES,
+        allow_list=AllowList(patterns=allow_patterns),
         ignore_tracker=IgnoreTracker(patterns=patterns),
         root=Path("/proj"),
     )
@@ -69,3 +71,43 @@ def test_check_records_only_the_crossing_sets():
     assert len(crossings) == 1
     assert crossings[0].crossed_aggregates == ("billing", "order")
     assert crossings[0].tests == {"t1"}
+
+
+def _fix_frames(monkeypatch, file: str):
+    """Pin the call place check() sees, so allow/ignore matching is testable
+    without a real project stack."""
+    from pytest_orm_boundaries import crossings
+
+    monkeypatch.setattr(
+        crossings, "find_frames_inside_project", lambda *, root: [(file, 7)]
+    )
+
+
+CROSSING = [["shop.Order", "billing.Invoice"]]
+
+
+def test_allow_suppresses_a_crossing(monkeypatch):
+    _fix_frames(monkeypatch, "app/reports.py")
+    tracker = _make_tracker(allow_patterns=["app/reports.py"])
+    tracker.check(label_sets=CROSSING)
+    assert tracker.crossings == []
+
+
+def test_ignore_suppresses_and_is_not_stale_when_used(monkeypatch):
+    _fix_frames(monkeypatch, "app/billing.py")
+    tracker = _make_tracker(patterns=["app/billing.py"])
+    tracker.check(label_sets=CROSSING)
+    assert tracker.crossings == []
+    assert tracker.find_stale_patterns() == []
+
+
+def test_allow_wins_over_ignore_and_leaves_the_ignore_stale(monkeypatch):
+    # A file in both sections: allow suppresses the crossing, and because the
+    # ignore is never marked used it surfaces as stale - redundant, remove it.
+    _fix_frames(monkeypatch, "app/reports.py")
+    tracker = _make_tracker(
+        patterns=["app/reports.py"], allow_patterns=["app/reports.py"]
+    )
+    tracker.check(label_sets=CROSSING)
+    assert tracker.crossings == []
+    assert tracker.find_stale_patterns() == ["app/reports.py"]

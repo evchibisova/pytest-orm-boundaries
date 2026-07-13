@@ -1,6 +1,6 @@
 """Test examples: call the service functions and watch the plugin react."""
 
-from bookshop import catalog, purchases, reports
+from bookshop import catalog, purchases, read_models, reports
 from bookshop.models import Book, Client
 
 
@@ -47,3 +47,8 @@ def test_count_purchases_for_client():
 def test_list_purchases_with_client_prefetched():
     # prefetch_related loads Client in a separate query -> crosses (reported).
     reports.list_purchases_with_client_prefetched()
+
+
+def test_build_sales_report():
+    # Read model spans client + purchase + book on purpose -> allowed, not reported.
+    read_models.build_sales_report()

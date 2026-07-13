@@ -11,6 +11,7 @@ from pytest_orm_boundaries.callstack import find_frames_inside_project
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from pytest_orm_boundaries.allows import AllowList
     from pytest_orm_boundaries.ignores import IgnoreTracker
 
 
@@ -27,16 +28,19 @@ class CrossingRecord:
 
 class CrossingTracker:
     """Checks label sets against the aggregate rule and records the crossings,
-    skipping ignored files and naming each crossing's call place and test."""
+    skipping allowed and ignored files and naming each crossing's call place and
+    test."""
 
     def __init__(
         self,
         *,
         aggregates_config: dict[str, str],
+        allow_list: AllowList,
         ignore_tracker: IgnoreTracker,
         root: Path,
     ) -> None:
         self._aggregates_config = aggregates_config
+        self._allow_list = allow_list
         self._ignore_tracker = ignore_tracker
         self._root_path = Path(root)
         self._current_test: str | None = None
@@ -48,13 +52,16 @@ class CrossingTracker:
 
     def check(self, *, label_sets: Iterable[Iterable[str]]) -> None:
         """Record a crossing for each label set that spans aggregates, unless an
-        active ignore covers the call place.
+        allow or an ignore covers the call place.
+
+        Allow wins over ignore: an allowed crossing is suppressed without marking
+        the ignore used, so an ignore that only overlaps an allow surfaces as
+        stale and can be removed as redundant.
         """
-        # ``frames`` is the in-project part of the call stack, gathered lazily:
-        # for the ignore/stale bookkeeping and to name each crossing's place.
+        # ``frames`` is the in-project part of the call stack
         frames: list[tuple[str, int]] | None = None
         file_paths: set[str] | None = None
-        if self._ignore_tracker.is_active:
+        if self._allow_list.is_active or self._ignore_tracker.is_active:
             frames = find_frames_inside_project(root=self._root_path)
             file_paths = {path for path, _ in frames}
             self._ignore_tracker.mark_seen(file_paths=file_paths)
@@ -63,11 +70,12 @@ class CrossingTracker:
             crossing = self.find_crossing(labels=labels)
             if crossing is None:
                 continue
-            if file_paths is not None and self._ignore_tracker.has_ignore_for(
-                file_paths=file_paths
-            ):
-                self._ignore_tracker.mark_used(file_paths=file_paths)
-                continue
+            if file_paths is not None:
+                if self._allow_list.has_allow_for(file_paths=file_paths):
+                    continue
+                if self._ignore_tracker.has_ignore_for(file_paths=file_paths):
+                    self._ignore_tracker.mark_used(file_paths=file_paths)
+                    continue
             if frames is None:
                 frames = find_frames_inside_project(root=self._root_path)
             call_place = frames[0] if frames else None

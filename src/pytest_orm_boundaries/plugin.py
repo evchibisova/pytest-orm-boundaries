@@ -14,6 +14,7 @@ from pytest_orm_boundaries.config import (
     discover_config_path,
     load_config,
 )
+from pytest_orm_boundaries.allows import AllowList
 from pytest_orm_boundaries.guard import BoundaryGuard
 from pytest_orm_boundaries.ignores import IgnoreTracker
 
@@ -56,10 +57,12 @@ def _build_guard(*, rootpath: Path, config_path: Path) -> BoundaryGuard | None:
     if not config.aggregates_by_model:
         return None
 
-    tracker = IgnoreTracker(patterns=config.ignored_files)
+    allow_list = AllowList(patterns=config.allowed_files)
+    ignore_tracker = IgnoreTracker(patterns=config.ignored_files)
     return BoundaryGuard(
         aggregates_config=config.aggregates_by_model,
-        ignore_tracker=tracker,
+        allow_list=allow_list,
+        ignore_tracker=ignore_tracker,
         root=rootpath,
     )
 

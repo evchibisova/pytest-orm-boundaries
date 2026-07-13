@@ -19,7 +19,8 @@ class BoundariesConfig:
     """Parsed and validated content of a ``boundaries.toml``."""
 
     aggregates_by_model: dict[str, str]  # {"app.model" lower-cased: aggregate_name}
-    ignored_files: list[str]  # glob patterns
+    ignored_files: list[str]  # globs for known debt, tracked for staleness
+    allowed_files: list[str]  # globs for intentional crossings, never stale
 
 
 def discover_config_path(*, explicit: str | None, rootpath: Path) -> Path | None:
@@ -42,7 +43,8 @@ def load_config(*, path: Path) -> BoundariesConfig:
     data = _read_config(path=path)
     return BoundariesConfig(
         aggregates_by_model=_parse_aggregates(data=data, path=path),
-        ignored_files=_parse_ignored_files(data=data, path=path),
+        ignored_files=_parse_file_globs(data=data, path=path, section_name="ignore"),
+        allowed_files=_parse_file_globs(data=data, path=path, section_name="allow"),
     )
 
 
@@ -82,23 +84,25 @@ def _parse_aggregates(*, data: dict[str, Any], path: Path) -> dict[str, str]:
     return aggregates_by_model
 
 
-def _parse_ignored_files(*, data: dict[str, Any], path: Path) -> list[str]:
-    """Read ``[ignore] files`` into a list of glob patterns."""
-    ignore = data.get("ignore", {})
-    if not isinstance(ignore, dict):
-        raise BoundariesConfigError(f"{path}: [ignore] must be a table")
+def _parse_file_globs(
+    *, data: dict[str, Any], path: Path, section_name: str
+) -> list[str]:
+    """Read ``[allow]`` and ``[ignore] files`` into a list of glob patterns."""
+    section_data = data.get(section_name, {})
+    if not isinstance(section_data, dict):
+        raise BoundariesConfigError(f"{path}: [{section_name}] must be a table")
 
-    files = ignore.get("files", [])
+    files = section_data.get("files", [])
     if not isinstance(files, list):
         raise BoundariesConfigError(
-            f"{path}: [ignore] files must be a list of glob patterns"
+            f"{path}: [{section_name}] files must be a list of glob patterns"
         )
 
     patterns: list[str] = []
     for entry in files:
         if not isinstance(entry, str):
             raise BoundariesConfigError(
-                f"{path}: [ignore] files has a non-string entry: {entry!r}"
+                f"{path}: [{section_name}] files has a non-string entry: {entry!r}"
             )
         patterns.append(entry)
     return patterns

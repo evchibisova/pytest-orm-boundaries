@@ -5,8 +5,13 @@ client   = ["bookshop.Client"]
 book     = ["bookshop.Book"]
 purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 
-# Ignore section
+# Allow section
+# Files whose crossings are intentional.
 # Each entry is a glob matched against the file that issues the query, relative to pytest's rootdir.
+[allow]
+files = ["bookshop/read_models.py"]
+
+# Ignore section
 [ignore]
 files = [
     "bookshop/purchases.py",  # crosses -> suppressed, tests pass
