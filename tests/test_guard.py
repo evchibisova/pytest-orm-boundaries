@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from pytest_orm_boundaries.allows import AllowList
 from pytest_orm_boundaries.guard import BoundaryGuard
 from pytest_orm_boundaries.ignores import IgnoreTracker
 
@@ -74,9 +75,13 @@ def _create_tables():
 
 @pytest.fixture
 def guard():
-    tracker = IgnoreTracker(patterns=[])
+    allow_list = AllowList(patterns=[])
+    ignore_tracker = IgnoreTracker(patterns=[])
     guard = BoundaryGuard(
-        aggregates_config=AGGREGATES, ignore_tracker=tracker, root=Path("/proj")
+        aggregates_config=AGGREGATES,
+        allow_list=allow_list,
+        ignore_tracker=ignore_tracker,
+        root=Path("/proj"),
     )
     guard.install()
     yield guard
@@ -234,9 +239,13 @@ def test_prefetch_not_recorded_after_uninstall_when_another_tool_wraps_on_top():
     import django.db.models.query as query_module
 
     pristine = query_module.prefetch_related_objects
-    tracker = IgnoreTracker(patterns=[])
+    allow_list = AllowList(patterns=[])
+    ignore_tracker = IgnoreTracker(patterns=[])
     guard = BoundaryGuard(
-        aggregates_config=AGGREGATES, ignore_tracker=tracker, root=Path("/proj")
+        aggregates_config=AGGREGATES,
+        allow_list=allow_list,
+        ignore_tracker=ignore_tracker,
+        root=Path("/proj"),
     )
     try:
         guard._install_prefetch_hook()
@@ -268,9 +277,13 @@ def test_uninstall_restores_original_when_topmost():
     import django.db.models.query as query_module
 
     pristine = query_module.prefetch_related_objects
-    tracker = IgnoreTracker(patterns=[])
+    allow_list = AllowList(patterns=[])
+    ignore_tracker = IgnoreTracker(patterns=[])
     guard = BoundaryGuard(
-        aggregates_config=AGGREGATES, ignore_tracker=tracker, root=Path("/proj")
+        aggregates_config=AGGREGATES,
+        allow_list=allow_list,
+        ignore_tracker=ignore_tracker,
+        root=Path("/proj"),
     )
     try:
         guard._install_prefetch_hook()
@@ -287,9 +300,13 @@ def test_prefetch_not_recorded_after_other_tool_restores_us():
     import django.db.models.query as query_module
 
     pristine = query_module.prefetch_related_objects
-    tracker = IgnoreTracker(patterns=[])
+    allow_list = AllowList(patterns=[])
+    ignore_tracker = IgnoreTracker(patterns=[])
     guard = BoundaryGuard(
-        aggregates_config=AGGREGATES, ignore_tracker=tracker, root=Path("/proj")
+        aggregates_config=AGGREGATES,
+        allow_list=allow_list,
+        ignore_tracker=ignore_tracker,
+        root=Path("/proj"),
     )
     try:
         guard._install_prefetch_hook()
@@ -319,9 +336,13 @@ def test_reinstall_after_stacked_uninstall_fires_once():
     import django.db.models.query as query_module
 
     pristine = query_module.prefetch_related_objects
-    tracker = IgnoreTracker(patterns=[])
+    allow_list = AllowList(patterns=[])
+    ignore_tracker = IgnoreTracker(patterns=[])
     guard = BoundaryGuard(
-        aggregates_config=AGGREGATES, ignore_tracker=tracker, root=Path("/proj")
+        aggregates_config=AGGREGATES,
+        allow_list=allow_list,
+        ignore_tracker=ignore_tracker,
+        root=Path("/proj"),
     )
     calls = []
     real_handle = guard._handle_prefetch

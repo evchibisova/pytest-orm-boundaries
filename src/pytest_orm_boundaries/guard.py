@@ -20,6 +20,7 @@ from pytest_orm_boundaries.sql_parsing import extract_table_names, looks_like_da
 if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
 
+    from pytest_orm_boundaries.allows import AllowList
     from pytest_orm_boundaries.crossings import CrossingRecord
     from pytest_orm_boundaries.ignores import IgnoreTracker
 
@@ -45,11 +46,13 @@ class BoundaryGuard:
         self,
         *,
         aggregates_config: dict[str, str],
+        allow_list: AllowList,
         ignore_tracker: IgnoreTracker,
         root: Path,
     ) -> None:
         self._tracker = CrossingTracker(
             aggregates_config=aggregates_config,
+            allow_list=allow_list,
             ignore_tracker=ignore_tracker,
             root=root,
         )
