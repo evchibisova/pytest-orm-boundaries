@@ -111,3 +111,45 @@ def test_allow_wins_over_ignore_and_leaves_the_ignore_stale(monkeypatch):
     tracker.check(label_sets=CROSSING)
     assert tracker.crossings == []
     assert tracker.find_stale_patterns() == ["app/reports.py"]
+
+
+def test_serialized_states_merge_crossings_from_multiple_workers():
+    crossing = (("billing", "order"), ("billing.Invoice", "shop.Order"))
+    worker_one = _make_tracker()
+    worker_one.add_record(
+        call_place=("app/report.py", 10), crossing=crossing, test="test_one"
+    )
+    worker_two = _make_tracker()
+    worker_two.add_record(
+        call_place=("app/report.py", 10), crossing=crossing, test="test_two"
+    )
+
+    controller = _make_tracker()
+    controller.merge_state(worker_one.serialize_state())
+    controller.merge_state(worker_two.serialize_state())
+
+    assert len(controller.crossings) == 1
+    assert controller.crossings[0].tests == {"test_one", "test_two"}
+
+
+def test_serialized_states_union_ignore_activity_across_workers(monkeypatch):
+    patterns = ["app/*.py", "app/stale.py"]
+
+    clean_worker = _make_tracker(patterns=patterns)
+    _fix_frames(monkeypatch, "app/clean.py")
+    clean_worker.check(label_sets=[["shop.Order"]])
+
+    crossing_worker = _make_tracker(patterns=patterns)
+    _fix_frames(monkeypatch, "app/crossing.py")
+    crossing_worker.check(label_sets=CROSSING)
+
+    stale_worker = _make_tracker(patterns=patterns)
+    _fix_frames(monkeypatch, "app/stale.py")
+    stale_worker.check(label_sets=[["shop.Order"]])
+
+    controller = _make_tracker(patterns=patterns)
+    for worker in (clean_worker, crossing_worker, stale_worker):
+        controller.merge_state(worker.serialize_state())
+
+    assert controller.crossings == []
+    assert controller.find_stale_patterns() == ["app/stale.py"]

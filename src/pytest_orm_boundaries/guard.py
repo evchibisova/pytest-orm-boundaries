@@ -12,7 +12,7 @@ from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pytest_orm_boundaries.crossings import CrossingTracker
+from pytest_orm_boundaries.crossings import CrossingTracker, SerializedTrackerState
 from pytest_orm_boundaries.model_resolution import resolve_labels
 from pytest_orm_boundaries.prefetch_resolution import resolve_prefetch_step_models
 from pytest_orm_boundaries.sql_parsing import extract_table_names, looks_like_data_query
@@ -157,6 +157,14 @@ class BoundaryGuard:
 
     def find_stale_patterns(self) -> list[str]:
         return self._tracker.find_stale_patterns()
+
+    def serialize_state(self) -> SerializedTrackerState:
+        """Return process-local results for transport to an xdist controller."""
+        return self._tracker.serialize_state()
+
+    def merge_state(self, state: SerializedTrackerState) -> None:
+        """Merge results received by the xdist controller from one worker."""
+        self._tracker.merge_state(state)
 
     def _handle_query(self, sql: str, vendor: str) -> None:
         """Map one executed data query to its table labels and check them."""

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-07-13
+
+### Fixed
+
+- Merge boundary crossings and stale-ignore activity from `pytest-xdist`
+  workers so parallel runs report violations and exit non-zero like serial runs.
+
 ## [0.7.2] - 2026-07-13
 
 ### Fixed
@@ -95,6 +102,7 @@ Initial alpha release.
 - Django ORM support: detects cross-aggregate access in the queries your test suite
   executes.
 
+[0.7.3]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.6.0...v0.7.0

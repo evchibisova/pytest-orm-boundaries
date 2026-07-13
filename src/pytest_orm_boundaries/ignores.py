@@ -31,5 +31,16 @@ class IgnoreTracker:
     def find_stale_patterns(self) -> list[str]:
         return sorted(self._seen - self._used)
 
+    def export_matched_patterns(self) -> tuple[set[str], set[str]]:
+        """Return copies of the patterns seen and used during this run."""
+        return set(self._seen), set(self._used)
+
+    def merge_matched_patterns(
+        self, *, seen: Iterable[str], used: Iterable[str]
+    ) -> None:
+        """Merge ignore activity collected by another process."""
+        self._seen.update(seen)
+        self._used.update(used)
+
     def _find_matching_patterns(self, file_paths: Iterable[str]) -> set[str]:
         return {p for f in file_paths for p in self._patterns if fnmatch(f, p)}
