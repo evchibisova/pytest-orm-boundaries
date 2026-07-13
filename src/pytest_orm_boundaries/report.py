@@ -88,8 +88,8 @@ def report_stale_ignores(
         return
     terminalreporter.section("orm-boundaries: stale ignores", yellow=True, bold=True)
     terminalreporter.write_line(
-        "These [ignore] entries no longer suppress any boundary crossing - "
-        f"their files are clean now. Remove them from {CONFIG_FILE_NAME}:",
+        "These [ignore] entries matched files that ran without crossing a "
+        f"boundary. Remove them from {CONFIG_FILE_NAME}:",
         yellow=True,
     )
     for pattern in stale:

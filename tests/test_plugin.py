@@ -68,7 +68,8 @@ def test_missing_explicit_config_is_usage_error(pytester: pytest.Pytester):
 
 def test_invalid_ignore_section_is_usage_error(pytester: pytest.Pytester):
     pytester.path.joinpath("boundaries.toml").write_text(
-        '[aggregates]\norder = ["shop.Order"]\n[ignore]\nfiles = "oops.py"\n'
+        '[aggregates.order]\nmodels = ["shop.Order"]\n'
+        '[ignore]\nfiles = "oops.py"\n'
     )
     pytester.makepyfile("def test_ok(): pass")
     result = pytester.runpytest()
@@ -78,7 +79,8 @@ def test_invalid_ignore_section_is_usage_error(pytester: pytest.Pytester):
 
 def test_invalid_config_is_usage_error(pytester: pytest.Pytester):
     pytester.path.joinpath("boundaries.toml").write_text(
-        '[aggregates]\norder = ["shop.Order"]\nbilling = ["shop.Order"]\n'
+        '[aggregates.order]\nmodels = ["shop.Order"]\n'
+        '[aggregates.billing]\nmodels = ["shop.Order"]\n'
     )
     pytester.makepyfile("def test_ok(): pass")
     result = pytester.runpytest()

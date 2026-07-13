@@ -62,13 +62,41 @@ def _parse_aggregates(*, data: dict[str, Any], path: Path) -> dict[str, str]:
     Model labels are lower-cased ("app_label.modelname") for case-insensitive
     matching.
     """
+    aggregate_definitions = data.get("aggregates", {})
+    if not isinstance(aggregate_definitions, dict):
+        raise BoundariesConfigError(
+            f"{path}: define aggregates as named sections, for example "
+            "[aggregates.order] with models = [...]"
+        )
+
     aggregates_by_model: dict[str, str] = {}
-    for aggregate, members in data.get("aggregates", {}).items():
-        if isinstance(members, dict):
-            members = members.get("models", [])
+    for aggregate, definition in aggregate_definitions.items():
+        if not isinstance(definition, dict):
+            raise BoundariesConfigError(
+                f"{path}: aggregate '{aggregate}' must define models in its own "
+                "section: "
+                f"[aggregates.{aggregate}] with models = [...]"
+            )
+
+        unknown_fields = set(definition) - {"models"}
+        if unknown_fields:
+            fields = ", ".join(sorted(unknown_fields))
+            raise BoundariesConfigError(
+                f"{path}: aggregate '{aggregate}' has unknown field(s): {fields}"
+            )
+
+        if "models" not in definition:
+            raise BoundariesConfigError(
+                f"{path}: aggregate '{aggregate}' is missing required 'models'"
+            )
+        members = definition["models"]
         if not isinstance(members, list):
             raise BoundariesConfigError(
-                f"{path}: aggregate '{aggregate}' must be a list of model labels"
+                f"{path}: aggregate '{aggregate}' models must be a list"
+            )
+        if not members:
+            raise BoundariesConfigError(
+                f"{path}: aggregate '{aggregate}' models must not be empty"
             )
         for label in members:
             if not isinstance(label, str):
@@ -90,7 +118,9 @@ def _parse_file_globs(
     """Read ``[allow]`` and ``[ignore] files`` into a list of glob patterns."""
     section_data = data.get(section_name, {})
     if not isinstance(section_data, dict):
-        raise BoundariesConfigError(f"{path}: [{section_name}] must be a table")
+        raise BoundariesConfigError(
+            f"{path}: [{section_name}] must be a section with a 'files' list"
+        )
 
     files = section_data.get("files", [])
     if not isinstance(files, list):

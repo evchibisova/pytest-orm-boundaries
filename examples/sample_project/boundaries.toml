@@ -1,9 +1,13 @@
 # Aggregates for the bookshop example.
 
-[aggregates]
-client   = ["bookshop.Client"]
-book     = ["bookshop.Book"]
-purchase = ["bookshop.Purchase", "bookshop.PurchaseLine"]
+[aggregates.client]
+models = ["bookshop.Client"]
+
+[aggregates.book]
+models = ["bookshop.Book"]
+
+[aggregates.purchase]
+models = ["bookshop.Purchase", "bookshop.PurchaseLine"]
 
 # Allow section
 # Files whose crossings are intentional.

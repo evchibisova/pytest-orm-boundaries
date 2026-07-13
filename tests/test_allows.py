@@ -15,7 +15,7 @@ def _write(tmp_path, text: str):
 
 
 def test_no_allow_section_is_empty(tmp_path):
-    path = _write(tmp_path, '[aggregates]\norder = ["shop.Order"]\n')
+    path = _write(tmp_path, '[aggregates.order]\nmodels = ["shop.Order"]\n')
     assert load_config(path=path).allowed_files == []
 
 
@@ -33,9 +33,12 @@ def test_loads_file_patterns_in_order(tmp_path):
     ]
 
 
-def test_allow_not_a_table_raises(tmp_path):
+def test_allow_must_be_a_section(tmp_path):
     path = _write(tmp_path, 'allow = "app/reports.py"\n')
-    with pytest.raises(BoundariesConfigError, match=r"\[allow\] must be a table"):
+    with pytest.raises(
+        BoundariesConfigError,
+        match=r"\[allow\] must be a section with a 'files' list",
+    ):
         load_config(path=path)
 
 

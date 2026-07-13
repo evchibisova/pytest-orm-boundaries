@@ -56,12 +56,6 @@ Generate a deterministic starter `boundaries.toml` from installed Django
 models. Suggest Django apps as an editable starting point, never overwrite an
 existing file by default, and print the next step.
 
-## Make aggregate config explicit
-
-Move from `client = ["shop.Client"]` to an extensible table form such as
-`[aggregates.client]` with `models = [...]`. Keep the shorthand during a
-deprecation period and ship the migration separately from feature changes.
-
 ## Surface unparsed queries
 
 Collect and report SQL statements the parser could not inspect instead of
