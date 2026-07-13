@@ -58,10 +58,12 @@ class CrossingTracker:
         the ignore used, so an ignore that only overlaps an allow surfaces as
         stale and can be removed as redundant.
         """
-        # ``frames`` is the in-project part of the call stack
+        # ``frames`` is the in-project part of the call stack. Ignores need it
+        # for every query so a clean run can make an ignore stale. Allows only
+        # matter after a crossing is found, so defer the expensive stack walk.
         frames: list[tuple[str, int]] | None = None
         file_paths: set[str] | None = None
-        if self._allow_list.is_active or self._ignore_tracker.is_active:
+        if self._ignore_tracker.is_active:
             frames = find_frames_inside_project(root=self._root_path)
             file_paths = {path for path, _ in frames}
             self._ignore_tracker.mark_seen(file_paths=file_paths)
@@ -70,14 +72,15 @@ class CrossingTracker:
             crossing = self.find_crossing(labels=labels)
             if crossing is None:
                 continue
-            if file_paths is not None:
-                if self._allow_list.has_allow_for(file_paths=file_paths):
-                    continue
-                if self._ignore_tracker.has_ignore_for(file_paths=file_paths):
-                    self._ignore_tracker.mark_used(file_paths=file_paths)
-                    continue
             if frames is None:
                 frames = find_frames_inside_project(root=self._root_path)
+                file_paths = {path for path, _ in frames}
+            assert file_paths is not None
+            if self._allow_list.has_allow_for(file_paths=file_paths):
+                continue
+            if self._ignore_tracker.has_ignore_for(file_paths=file_paths):
+                self._ignore_tracker.mark_used(file_paths=file_paths)
+                continue
             call_place = frames[0] if frames else None
             self.add_record(
                 call_place=call_place, crossing=crossing, test=self._current_test

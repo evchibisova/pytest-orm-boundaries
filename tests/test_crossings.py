@@ -84,6 +84,26 @@ def _fix_frames(monkeypatch, file: str):
 
 
 CROSSING = [["shop.Order", "billing.Invoice"]]
+CLEAN = [["shop.Order", "shop.OrderLine"]]
+
+
+def test_allow_does_not_inspect_clean_queries(monkeypatch):
+    from pytest_orm_boundaries import crossings
+
+    def fail_if_called(*, root):
+        raise AssertionError("clean queries do not need an allow lookup")
+
+    monkeypatch.setattr(crossings, "find_frames_inside_project", fail_if_called)
+    tracker = _make_tracker(allow_patterns=["app/reports.py"])
+    tracker.check(label_sets=CLEAN)
+    assert tracker.crossings == []
+
+
+def test_ignore_inspects_clean_queries_to_track_staleness(monkeypatch):
+    _fix_frames(monkeypatch, "app/billing.py")
+    tracker = _make_tracker(patterns=["app/billing.py"])
+    tracker.check(label_sets=CLEAN)
+    assert tracker.find_stale_patterns() == ["app/billing.py"]
 
 
 def test_allow_suppresses_a_crossing(monkeypatch):
