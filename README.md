@@ -21,13 +21,21 @@ and reports access that crosses a configured boundary - through `__` lookups,
 
 ## Install
 
-Install the plugin with Django support:
+Install the plugin in your Django project:
+
+```bash
+pip install pytest-orm-boundaries
+```
+
+pytest discovers the plugin automatically.
+
+The plugin uses the Django version already installed by your project. If you are
+installing into an environment without Django and want pip to install it too,
+use the optional extra:
 
 ```bash
 pip install "pytest-orm-boundaries[django]"
 ```
-
-pytest discovers the plugin automatically.
 
 ## Configure
 
@@ -122,18 +130,21 @@ Places are ordered by how many tests they affect. Pass `-v` to see every affecte
 
 ## Allow and ignore
 
-CQRS read models may cross boundaries intentionally, also existing application code may contain crossings you want to fix over time. [allow] and [ignore] let you tell the plugin which is which:
+CQRS read models may cross aggregate boundaries by design, while existing
+application code may contain crossings you want to fix over time. `[allow]` and
+`[ignore]` let you tell the plugin which is which:
 
 - `[allow]` - the crossing is **intentional**. Use it for code that is meant to
-  span aggregates, such as CQRS read models or cross-aggregate reports. An
-  allowed crossing is suppressed and never reported.
+  span aggregates, such as CQRS read models. An allowed crossing is suppressed
+  and never reported.
 - `[ignore]` - the crossing is **known debt** you plan to fix. It is suppressed
-  for now, and the plugin reminds you when an entry is no longer needed.
+  and the plugin reports the entry when its matching code runs without a
+  crossing.
 
 ```toml
 [allow]
 files = [
-    "app/reports/sales_summary.py",
+    "app/read_models/sales.py",
 ]
 
 [ignore]
@@ -149,13 +160,12 @@ resolved relative to pytest's root directory and matched against either:
 - the file that issues the query, or
 - the test file.
 
-An `[ignore]` whose file runs through the whole suite without ever crossing a
-boundary is stale — it is clean now, so the plugin lists it for removal:
+An `[ignore]` whose matching code runs through the whole suite without crossing
+a boundary is stale, so the plugin lists it for removal:
 
 ```
 ======================= orm-boundaries: stale ignores ========================
-These [ignore] entries no longer suppress any boundary crossing - their files are clean now.
-Remove them from boundaries.toml:
+These [ignore] entries matched files that ran without crossing a boundary. Remove them from boundaries.toml:
   - app/billing.py
 ```
 

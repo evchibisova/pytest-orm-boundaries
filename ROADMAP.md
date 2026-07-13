@@ -39,13 +39,6 @@ Genuine crossings that never trip the join rule:
 Match ignores, including stale-ignore tracking, to the file that issues the
 query rather than any file in its call chain.
 
-## Add `[allow]` for intentional crossings
-
-Give `[allow]` the same file matching as `[ignore]`, but different semantics:
-allows describe intentional architecture and never become stale; ignores track
-known debt. This supports CQRS read models and reports that legitimately span
-aggregates.
-
 ## Warn about unknown models
 
 Warn at startup when a model named in `boundaries.toml` does not exist.
@@ -73,6 +66,11 @@ Avoid walking the full call stack for every clean query when ignores are set.
 ## Make the project root configurable
 
 Allow the config to pin the root used for matching file paths.
+
+## Add SQLAlchemy support
+
+Support SQLAlchemy as an alternative backend. Define how aggregates reference
+mapped classes or table names while keeping ORM-specific dependencies optional.
 
 ## Measure instrumentation overhead
 
