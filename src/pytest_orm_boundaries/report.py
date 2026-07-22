@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from pytest_orm_boundaries.crossings import CrossingRecord
 
-MAX_TESTS_SHOWN = 5
+MAX_TESTS_SHOWN = 3
 
 
 def report_crossings(
@@ -37,7 +37,9 @@ def report_crossings(
         f"affecting {affected} test(s):",
         red=True,
     )
-    for crossing in crossings:
+    for index, crossing in enumerate(crossings):
+        if index:
+            terminalreporter.write_line("")
         _write_crossing(
             terminalreporter=terminalreporter, crossing=crossing, verbose=verbose
         )
@@ -56,7 +58,6 @@ def _write_crossing(
     crossing: CrossingRecord,
     verbose: bool,
 ) -> None:
-    terminalreporter.write_line("")
     terminalreporter.write_line(f"{crossing.file}:{crossing.line_number}", bold=True)
     aggregates = " ↔ ".join(crossing.crossed_aggregates)
     terminalreporter.write_line(

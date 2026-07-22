@@ -126,7 +126,7 @@ orm-boundaries: FAILED - 1 boundary crossing(s), run exits non-zero.
 
 Each entry names the aggregates the query crossed and the models it joined.
 Places are ordered by how many tests they affect. Pass `-v` to see every affected test
-(otherwise the list is capped at 5 per place).
+(otherwise the list is capped at 3 per place).
 
 ## Allow and ignore
 
