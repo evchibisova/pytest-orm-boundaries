@@ -52,9 +52,20 @@ def test_report_counts_call_places_and_distinct_tests():
     assert any("2 place(s)" in line and "3 test(s)" in line for line in lines)
 
 
+def test_report_separates_call_places_with_a_blank_line():
+    lines = _render(
+        [
+            _crossing(file="app/a.py"),
+            _crossing(file="app/b.py"),
+        ]
+    )
+    second_file = lines.index("app/b.py:42")
+    assert lines[second_file - 1] == ""
+
+
 def test_report_truncates_long_test_lists_unless_verbose():
     many = tuple(f"test_{i}" for i in range(50))
-    assert any("+45 more" in line for line in _render([_crossing(tests=many)]))  # 50-5
+    assert any("+47 more" in line for line in _render([_crossing(tests=many)]))  # 50-3
     assert not any("more" in line for line in _render([_crossing(tests=many)], verbose=True))
 
 

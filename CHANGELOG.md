@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-07-22
+
+### Changed
+
+- Separate boundary-crossing locations with blank lines and show at most three
+  affected tests per location unless verbose output is enabled.
+
 ## [0.7.3] - 2026-07-13
 
 ### Fixed
@@ -102,6 +109,7 @@ Initial alpha release.
 - Django ORM support: detects cross-aggregate access in the queries your test suite
   executes.
 
+[0.7.4]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.0...v0.7.1
