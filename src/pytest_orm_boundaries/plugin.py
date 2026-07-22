@@ -45,6 +45,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "config file is found, boundary checks are disabled."
         ),
     )
+    group.addoption(
+        "--boundaries-stale-ignores",
+        action="store_true",
+        help=(
+            "Experimental: report [ignore] entries that may be stale. "
+            "Disabled by default while detection is being refined."
+        ),
+    )
     parser.addini(
         "boundaries_config",
         help="Same as --boundaries-config.",
@@ -153,8 +161,9 @@ def pytest_terminal_summary(
         crossings=guard.crossings,
         verbose=config.getoption("verbose", 0) > 0,
     )
-    stale = guard.find_stale_patterns()
-    report.report_stale_ignores(terminalreporter=terminalreporter, stale=stale)
+    if config.getoption("boundaries_stale_ignores"):
+        stale = guard.find_stale_patterns()
+        report.report_stale_ignores(terminalreporter=terminalreporter, stale=stale)
 
 
 def pytest_report_header(config: pytest.Config) -> str:

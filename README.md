@@ -160,8 +160,15 @@ resolved relative to pytest's root directory and matched against either:
 - the file that issues the query, or
 - the test file.
 
-An `[ignore]` whose matching code runs through the whole suite without crossing
-a boundary is stale, so the plugin lists it for removal:
+Stale-ignore reporting is experimental and disabled by default while its
+detection is being refined. Enable it explicitly when running pytest:
+
+```bash
+pytest --boundaries-stale-ignores
+```
+
+With the flag enabled, an `[ignore]` whose matching code runs through the whole
+suite without crossing a boundary is listed for removal:
 
 ```
 ======================= orm-boundaries: stale ignores ========================
@@ -170,7 +177,8 @@ These [ignore] entries matched files that ran without crossing a boundary. Remov
 ```
 
 `[allow]` entries are never reported this way. If a file sits in both sections,
-the allow wins and its `[ignore]` entry shows up as stale to remove.
+the allow wins and its `[ignore]` entry shows up as stale to remove when the
+check is enabled.
 
 ## A note on Django internals
 
