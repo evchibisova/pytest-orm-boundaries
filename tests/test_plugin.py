@@ -10,9 +10,11 @@ def test_registered_under_pytest11_entry_point():
     assert any(ep.value == "pytest_orm_boundaries.plugin" for ep in entrypoints)
 
 
-def test_help_lists_config_option(pytester: pytest.Pytester):
+def test_help_lists_plugin_options(pytester: pytest.Pytester):
     result = pytester.runpytest("--help")
-    result.stdout.fnmatch_lines(["*--boundaries-config*"])
+    result.stdout.fnmatch_lines(
+        ["*--boundaries-config*", "*--boundaries-stale-ignores*"]
+    )
 
 
 def test_inactive_without_config_file(pytester: pytest.Pytester):
@@ -178,7 +180,7 @@ def test_xdist_reports_worker_crossings_and_fails_run(pytester: pytest.Pytester)
         )
 
 
-def test_xdist_stale_ignores_union_activity_from_all_workers(
+def test_stale_ignores_are_opt_in_and_union_activity_from_all_xdist_workers(
     pytester: pytest.Pytester,
 ):
     shared_pattern = "test_shared_*.py"
@@ -210,9 +212,14 @@ def test_xdist_stale_ignores_union_activity_from_all_workers(
         """,
     )
 
-    serial = pytester.runpytest_subprocess()
+    default = pytester.runpytest_subprocess()
+    default.assert_outcomes(passed=3)
+    assert default.ret == pytest.ExitCode.OK
+    assert "orm-boundaries: stale ignores" not in default.stdout.str()
+
+    serial = pytester.runpytest_subprocess("--boundaries-stale-ignores")
     distributed = pytester.runpytest_subprocess(
-        "-n", "2", "--dist", "loadfile"
+        "-n", "2", "--dist", "loadfile", "--boundaries-stale-ignores"
     )
 
     for result in (serial, distributed):
