@@ -8,12 +8,14 @@ from pytest_orm_boundaries.crossings import CrossingRecord
 class _FakeReporter:
     def __init__(self):
         self.lines: list[str] = []
+        self.writes: list[tuple[str, dict]] = []
 
     def section(self, title, **kwargs):
         self.lines.append(title)
 
     def write_line(self, line, **kwargs):
         self.lines.append(line)
+        self.writes.append((line, kwargs))
 
 
 def _render(crossings, *, verbose=False):
@@ -56,7 +58,7 @@ def test_report_shows_call_place_aggregates_models_and_tests():
         )
     )
     assert "boundary crossings" in text
-    assert "app/pay.py:42 in Payments.report" in text
+    assert "[1] app/pay.py:42 in Payments.report" in text
     assert "order ↔ payment" in text
     assert "payrolls.IncomePayment" in text  # a joined model
     assert "test_a" in text and "test_b" in text
@@ -109,8 +111,24 @@ def test_report_separates_call_places_with_a_blank_line():
             _crossing(file="app/b.py"),
         ]
     )
-    second_file = lines.index("app/b.py:42")
+    second_file = lines.index("[2] app/b.py:42")
     assert lines[second_file - 1] == ""
+
+
+def test_report_numbers_and_highlights_call_places():
+    reporter = _FakeReporter()
+    report.report_crossings(
+        terminalreporter=reporter,
+        crossings=[_crossing(file="app/a.py"), _crossing(file="app/b.py")],
+    )
+
+    headings = [
+        (line, style) for line, style in reporter.writes if line.startswith("[")
+    ]
+    assert headings == [
+        ("[1] app/a.py:42", {"yellow": True, "bold": True}),
+        ("[2] app/b.py:42", {"yellow": True, "bold": True}),
+    ]
 
 
 def test_report_truncates_long_test_lists_unless_verbose():

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-24
+
+### Changed
+
+- Update report view.
+
 ## [0.8.0] - 2026-07-24
 
 ### Added
@@ -123,7 +129,8 @@ Initial alpha release.
 - Django ORM support: detects cross-aggregate access in the queries your test suite
   executes.
 
-[Unreleased]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.5...v0.8.0
 [0.7.5]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.3...v0.7.4
