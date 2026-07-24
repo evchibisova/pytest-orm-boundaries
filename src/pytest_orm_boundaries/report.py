@@ -43,7 +43,10 @@ def report_crossings(
         if index:
             terminalreporter.write_line("")
         _write_crossing(
-            terminalreporter=terminalreporter, crossing=crossing, verbose=verbose
+            terminalreporter=terminalreporter,
+            crossing=crossing,
+            number=index + 1,
+            verbose=verbose,
         )
     terminalreporter.write_line("")
     terminalreporter.write_line(
@@ -58,9 +61,14 @@ def _write_crossing(
     *,
     terminalreporter: pytest.TerminalReporter,
     crossing: CrossingRecord,
+    number: int,
     verbose: bool,
 ) -> None:
-    terminalreporter.write_line(_format_frame(crossing.execution_frame), bold=True)
+    terminalreporter.write_line(
+        f"[{number}] {_format_frame(crossing.execution_frame)}",
+        yellow=True,
+        bold=True,
+    )
     aggregates = " ↔ ".join(crossing.crossed_aggregates)
     terminalreporter.write_line(
         f"    crossed aggregates: {aggregates}", yellow=True, bold=True

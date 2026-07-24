@@ -115,7 +115,7 @@ At the end of the run, the plugin prints one grouped entry per offending place:
 ====================== orm-boundaries: boundary crossings ======================
 1 place(s) in your code crossed aggregate boundaries, affecting 1 test(s):
 
-bookshop/query_helpers.py:8 in evaluate
+[1] bookshop/query_helpers.py:8 in evaluate
     crossed aggregates: client ↔ purchase
     models: bookshop.Client, bookshop.Purchase
     called from: bookshop/reports.py:13 in list_purchases_with_client
