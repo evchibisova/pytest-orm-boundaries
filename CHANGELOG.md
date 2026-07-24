@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-24
+
+### Added
+
+- Show function names and short, distinct project caller paths for each
+  boundary-crossing execution site, including merged pytest-xdist results.
+
 ## [0.7.5] - 2026-07-22
 
 ### Changed
@@ -116,6 +123,8 @@ Initial alpha release.
 - Django ORM support: detects cross-aggregate access in the queries your test suite
   executes.
 
+[Unreleased]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.5...v0.8.0
 [0.7.5]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.4...v0.7.5
 [0.7.4]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.3...v0.7.4
 [0.7.3]: https://github.com/evchibisova/pytest-orm-boundaries/compare/v0.7.2...v0.7.3

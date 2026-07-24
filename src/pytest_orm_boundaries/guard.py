@@ -12,10 +12,11 @@ from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pytest_orm_boundaries.crossings import CrossingTracker, SerializedTrackerState
+from pytest_orm_boundaries.crossings import CrossingTracker
 from pytest_orm_boundaries.model_resolution import resolve_labels
 from pytest_orm_boundaries.prefetch_resolution import resolve_prefetch_step_models
 from pytest_orm_boundaries.sql_parsing import extract_table_names, looks_like_data_query
+from pytest_orm_boundaries.xdist_state import SerializedTrackerState
 
 if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
