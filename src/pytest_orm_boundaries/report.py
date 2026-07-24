@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pytest_orm_boundaries.callstack import ProjectStackFrame
 from pytest_orm_boundaries.config import CONFIG_FILE_NAME
 
 if TYPE_CHECKING:
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from pytest_orm_boundaries.crossings import CrossingRecord
 
 MAX_TESTS_SHOWN = 3
+MAX_CALLERS_SHOWN = 3
 
 
 def report_crossings(
@@ -58,13 +60,16 @@ def _write_crossing(
     crossing: CrossingRecord,
     verbose: bool,
 ) -> None:
-    terminalreporter.write_line(f"{crossing.file}:{crossing.line_number}", bold=True)
+    terminalreporter.write_line(_format_frame(crossing.execution_frame), bold=True)
     aggregates = " ↔ ".join(crossing.crossed_aggregates)
     terminalreporter.write_line(
         f"    crossed aggregates: {aggregates}", yellow=True, bold=True
     )
     models = ", ".join(crossing.involved_models)
     terminalreporter.write_line(f"    models: {models}")
+    _write_callers(
+        terminalreporter=terminalreporter, crossing=crossing, verbose=verbose
+    )
 
     tests = sorted(crossing.tests)
     if not tests:
@@ -80,6 +85,53 @@ def _write_crossing(
         terminalreporter.write_line(
             f"      ... +{hidden} more (-v to list all)", light=True
         )
+
+
+def _write_callers(
+    *,
+    terminalreporter: pytest.TerminalReporter,
+    crossing: CrossingRecord,
+    verbose: bool,
+) -> None:
+    paths = sorted(crossing.caller_paths)
+    if not paths:
+        return
+
+    if not verbose:
+        immediate_callers = sorted({path[0] for path in paths})
+        if len(immediate_callers) == 1:
+            terminalreporter.write_line(
+                f"    called from: {_format_frame(immediate_callers[0])}",
+                light=True,
+            )
+            return
+
+        terminalreporter.write_line("    called from:", light=True)
+        for frame in immediate_callers[:MAX_CALLERS_SHOWN]:
+            terminalreporter.write_line(f"      {_format_frame(frame)}", light=True)
+        hidden = len(immediate_callers) - MAX_CALLERS_SHOWN
+        if hidden > 0:
+            terminalreporter.write_line(
+                f"      ... +{hidden} more (-v to list full call chains)",
+                light=True,
+            )
+        return
+
+    title = "call chain:" if len(paths) == 1 else "call chains:"
+    terminalreporter.write_line(f"    {title}", light=True)
+    for path in paths:
+        terminalreporter.write_line(f"      {_format_frame(path[0])}", light=True)
+        for frame in path[1:]:
+            terminalreporter.write_line(
+                f"        called from {_format_frame(frame)}", light=True
+            )
+
+
+def _format_frame(frame: ProjectStackFrame) -> str:
+    location = f"{frame.file}:{frame.line_number}"
+    if frame.function == "<unknown>":
+        return location
+    return f"{location} in {frame.function}"
 
 
 def report_stale_ignores(

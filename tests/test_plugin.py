@@ -180,6 +180,61 @@ def test_xdist_reports_worker_crossings_and_fails_run(pytester: pytest.Pytester)
         )
 
 
+def test_shared_execution_site_reports_distinct_callers_in_serial_and_xdist(
+    pytester: pytest.Pytester,
+):
+    _configure_active_plugin(pytester)
+    pytester.makepyfile(
+        shared_query="""
+        def evaluate(queryset):
+            return list(queryset)
+        """,
+        crossing_callers="""
+        from shared_query import evaluate
+        from shop.models import Order
+
+        def from_orders():
+            return evaluate(Order.objects.filter(customer__name="Ann"))
+
+        def from_billing():
+            return evaluate(Order.objects.filter(customer__name="Bea"))
+        """,
+        test_orders="""
+        from crossing_callers import from_orders
+        from shop.models import tables
+
+        def test_orders():
+            with tables():
+                from_orders()
+        """,
+        test_billing="""
+        from crossing_callers import from_billing
+        from shop.models import tables
+
+        def test_billing():
+            with tables():
+                from_billing()
+        """,
+    )
+
+    serial = pytester.runpytest_subprocess()
+    distributed = pytester.runpytest_subprocess("-n", "2", "--dist", "loadfile")
+
+    for result in (serial, distributed):
+        result.assert_outcomes(passed=2)
+        assert result.ret == pytest.ExitCode.TESTS_FAILED
+        result.stdout.fnmatch_lines(
+            [
+                "*1 place(s)*affecting 2 test(s)*",
+                "*shared_query.py:* in evaluate*",
+                "*called from:*",
+                "*crossing_callers.py:* in from_orders*",
+                "*crossing_callers.py:* in from_billing*",
+                "*orm-boundaries: FAILED - 1 boundary crossing(s)*",
+            ]
+        )
+
+
 def test_stale_ignores_are_opt_in_and_union_activity_from_all_xdist_workers(
     pytester: pytest.Pytester,
 ):

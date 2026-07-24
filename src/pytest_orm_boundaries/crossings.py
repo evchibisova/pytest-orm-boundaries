@@ -4,12 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
-from pytest_orm_boundaries.callstack import find_frames_inside_project
+from pytest_orm_boundaries.callstack import (
+    ProjectStackFrame,
+    find_frames_inside_project,
+    select_callers_for_report,
+)
+from pytest_orm_boundaries.xdist_state import (
+    SerializedTrackerState,
+    iter_crossing_updates,
+    matched_ignore_patterns,
+    serialize_tracker_state,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     from pytest_orm_boundaries.allows import AllowList
     from pytest_orm_boundaries.ignores import IgnoreTracker
@@ -17,31 +27,15 @@ if TYPE_CHECKING:
 
 @dataclass
 class CrossingRecord:
-    """One offending call place and the tests that reached it."""
+    """One execution site, its distinct caller paths, and affected tests."""
 
-    file: str
-    line_number: int
+    execution_frame: ProjectStackFrame
     crossed_aggregates: tuple[str, ...]  # ("order", "payment")
     involved_models: tuple[str, ...]  # ("order.Invoice", "payrolls.IncomePayment")
     tests: set[str] = field(default_factory=set)
-
-
-class SerializedCrossing(TypedDict):
-    """One crossing encoded using values supported by xdist's worker channel."""
-
-    file: str
-    line_number: int
-    crossed_aggregates: list[str]
-    involved_models: list[str]
-    tests: list[str]
-
-
-class SerializedTrackerState(TypedDict):
-    """All process-local result state that the xdist controller must merge."""
-
-    crossings: list[SerializedCrossing]
-    seen_ignore_patterns: list[str]
-    used_ignore_patterns: list[str]
+    caller_paths: dict[tuple[ProjectStackFrame, ...], set[str]] = field(
+        default_factory=dict
+    )
 
 
 class CrossingTracker:
@@ -77,11 +71,11 @@ class CrossingTracker:
         stale and can be removed as redundant.
         """
         # ``frames`` is the in-project part of the call stack
-        frames: list[tuple[str, int]] | None = None
+        frames: list[ProjectStackFrame] | None = None
         file_paths: set[str] | None = None
         if self._allow_list.is_active or self._ignore_tracker.is_active:
             frames = find_frames_inside_project(root=self._root_path)
-            file_paths = {path for path, _ in frames}
+            file_paths = {frame.file for frame in frames}
             self._ignore_tracker.mark_seen(file_paths=file_paths)
 
         for labels in label_sets:
@@ -96,10 +90,7 @@ class CrossingTracker:
                     continue
             if frames is None:
                 frames = find_frames_inside_project(root=self._root_path)
-            call_place = frames[0] if frames else None
-            self.add_record(
-                call_place=call_place, crossing=crossing, test=self._current_test
-            )
+            self.add_record(frames=frames, crossing=crossing, test=self._current_test)
 
     def find_crossing(
         self, *, labels: Iterable[str]
@@ -124,32 +115,57 @@ class CrossingTracker:
     def add_record(
         self,
         *,
-        call_place: tuple[str, int] | None,
+        frames: Sequence[ProjectStackFrame],
         crossing: tuple[tuple[str, ...], tuple[str, ...]],
         test: str | None,
     ) -> None:
-        """Add one crossing, merging into the record for its call place."""
+        """Merge one crossing into its execution site and caller path."""
         crossed_aggregates, involved_models = crossing
-        file, line = call_place if call_place is not None else ("<unknown>", 0)
-        key = (file, line, crossed_aggregates)
+        execution = (
+            frames[0]
+            if frames
+            else ProjectStackFrame(
+                file="<unknown>", line_number=0, function="<unknown>"
+            )
+        )
+        key = (execution.file, execution.line_number, crossed_aggregates)
         record = self._crossings.get(key)
         if record is None:
             record = CrossingRecord(
-                file=file,
-                line_number=line,
+                execution_frame=execution,
                 crossed_aggregates=crossed_aggregates,
                 involved_models=involved_models,
             )
             self._crossings[key] = record
+        else:
+            record.involved_models = tuple(
+                sorted(set(record.involved_models) | set(involved_models))
+            )
+            if execution.function != "<unknown>" and (
+                record.execution_frame.function == "<unknown>"
+                or execution.function < record.execution_frame.function
+            ):
+                record.execution_frame = execution
+
         if test is not None:
             record.tests.add(test)
+
+        caller_path = select_callers_for_report(frames=frames, test=test)
+        if caller_path:
+            path_tests = record.caller_paths.setdefault(caller_path, set())
+            if test is not None:
+                path_tests.add(test)
 
     @property
     def crossings(self) -> list[CrossingRecord]:
         """Recorded crossings, most-affecting first."""
         return sorted(
             self._crossings.values(),
-            key=lambda v: (-len(v.tests), v.file, v.line_number),
+            key=lambda v: (
+                -len(v.tests),
+                v.execution_frame.file,
+                v.execution_frame.line_number,
+            ),
         )
 
     def find_stale_patterns(self) -> list[str]:
@@ -159,42 +175,18 @@ class CrossingTracker:
     def serialize_state(self) -> SerializedTrackerState:
         """Encode collected results using only xdist-serializable values."""
         seen, used = self._ignore_tracker.export_matched_patterns()
-        return {
-            "crossings": [
-                {
-                    "file": crossing.file,
-                    "line_number": crossing.line_number,
-                    "crossed_aggregates": list(crossing.crossed_aggregates),
-                    "involved_models": list(crossing.involved_models),
-                    "tests": sorted(crossing.tests),
-                }
-                for crossing in self.crossings
-            ],
-            "seen_ignore_patterns": sorted(seen),
-            "used_ignore_patterns": sorted(used),
-        }
+        return serialize_tracker_state(
+            crossings=self.crossings,
+            seen_ignore_patterns=seen,
+            used_ignore_patterns=used,
+        )
 
     def merge_state(self, state: SerializedTrackerState) -> None:
         """Merge results collected by another process into this tracker."""
-        for crossing in state["crossings"]:
-            crossed = (
-                tuple(crossing["crossed_aggregates"]),
-                tuple(crossing["involved_models"]),
-            )
-            tests = crossing["tests"]
-            if not tests:
-                self.add_record(
-                    call_place=(crossing["file"], crossing["line_number"]),
-                    crossing=crossed,
-                    test=None,
-                )
-            for test in tests:
-                self.add_record(
-                    call_place=(crossing["file"], crossing["line_number"]),
-                    crossing=crossed,
-                    test=test,
-                )
+        for frames, crossing, test in iter_crossing_updates(state=state):
+            self.add_record(frames=frames, crossing=crossing, test=test)
+        seen, used = matched_ignore_patterns(state=state)
         self._ignore_tracker.merge_matched_patterns(
-            seen=state["seen_ignore_patterns"],
-            used=state["used_ignore_patterns"],
+            seen=seen,
+            used=used,
         )

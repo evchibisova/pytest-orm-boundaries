@@ -115,9 +115,10 @@ At the end of the run, the plugin prints one grouped entry per offending place:
 ====================== orm-boundaries: boundary crossings ======================
 1 place(s) in your code crossed aggregate boundaries, affecting 1 test(s):
 
-bookshop/reports.py:13
+bookshop/query_helpers.py:8 in evaluate
     crossed aggregates: client ↔ purchase
     models: bookshop.Client, bookshop.Purchase
+    called from: bookshop/reports.py:13 in list_purchases_with_client
     1 test(s) affected:
       test_purchases.py::test_list_purchases_with_client
 
@@ -125,8 +126,8 @@ orm-boundaries: FAILED - 1 boundary crossing(s), run exits non-zero.
 ```
 
 Each entry names the aggregates the query crossed and the models it joined.
-Places are ordered by how many tests they affect. Pass `-v` to see every affected test
-(otherwise the list is capped at 3 per place).
+Places are ordered by how many tests they affect. Pass `-v` to see full call
+chains and every affected test (otherwise the lists are capped at 3 per place).
 
 ## Allow and ignore
 
